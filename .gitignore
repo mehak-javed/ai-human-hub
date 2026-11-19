@@ -1,0 +1,16 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.sqlite3
+
+# Node / Next.js
+node_modules/
+.next/
+
+# Secrets
+.env
+
+# OS / misc
+.DS_Store
+*.pdf
