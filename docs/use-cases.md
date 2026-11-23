@@ -97,7 +97,7 @@ P = Privacy and data, N = Non-functional.
 | ID | Use case | What happens | Done when |
 |---|---|---|---|
 | P1 | Never store audio | Audio is held in memory only for transcription, then dropped | No audio column or file storage exists |
-| P2 | Role-based access | Django checks the Clerk token and role on every request, plus a project-owner check in every API view; Django Admin is staff-only | A client requesting another client's project gets 403 |
+| P2 | Role-based access | Django checks the Clerk token and role on every request, plus a project-owner check in every API view; Django Admin is staff-only | A client requesting another client's project gets 404 (not found), so it can't learn the project exists |
 | P3 | Automatic clean-up | A daily job deletes projects finished more than 12 months ago | Old rows are gone; the deletion is logged |
 | P4 | Data export | Client can download approved requirements as Markdown | File matches what is in the app |
 | P5 | Weekly backup | Database exported to a SQL file each week | Latest backup is under 8 days old |
