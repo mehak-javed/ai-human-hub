@@ -29,6 +29,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "corsheaders",
     "rest_framework",
+    "accounts",
     "core",
 ]
 
@@ -95,10 +96,13 @@ STATIC_URL = "static/"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+AUTH_USER_MODEL = "accounts.User"
+
 # Django REST Framework: every endpoint requires authentication unless it
 # explicitly opts out (see core.views.health).
 
 REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": ["accounts.authentication.ClerkAuthentication"],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
 }
 
@@ -108,3 +112,9 @@ REST_FRAMEWORK = {
 CORS_ALLOWED_ORIGINS = os.environ.get(
     "CORS_ALLOWED_ORIGINS", "http://localhost:3000"
 ).split(",")
+
+# Clerk: the secret key verifies session tokens. Tokens are only accepted when
+# they were issued to one of our own frontend origins (authorized parties).
+
+CLERK_SECRET_KEY = os.environ["CLERK_SECRET_KEY"]
+CLERK_AUTHORIZED_PARTIES = CORS_ALLOWED_ORIGINS

@@ -36,6 +36,7 @@ jobs:
       DJANGO_SECRET_KEY: ci-only-not-a-real-secret
       DJANGO_DEBUG: "False"
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/ai_human_hub
+      CLERK_SECRET_KEY: sk_test_ci_only_not_a_real_key
 
     steps:
       - uses: actions/checkout@v5
