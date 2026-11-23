@@ -1,42 +1,10 @@
 "use client";
 
-import { useAuth } from "@clerk/nextjs";
-import { useEffect, useState } from "react";
-
-import { getMe, type Me } from "@/lib/api";
-
-type State = { kind: "loading" } | { kind: "loaded"; me: Me } | { kind: "error" };
+import { getMe } from "@/lib/api";
+import { useApi } from "@/lib/useApi";
 
 export function MyAccount() {
-  const { getToken, isLoaded } = useAuth();
-  const [state, setState] = useState<State>({ kind: "loading" });
-
-  useEffect(() => {
-    if (!isLoaded) {
-      return;
-    }
-    const controller = new AbortController();
-
-    async function load() {
-      try {
-        const token = await getToken();
-        if (!token) {
-          setState({ kind: "error" });
-          return;
-        }
-        const me = await getMe(token, controller.signal);
-        setState({ kind: "loaded", me });
-      } catch (error: unknown) {
-        if (error instanceof DOMException && error.name === "AbortError") {
-          return;
-        }
-        setState({ kind: "error" });
-      }
-    }
-
-    load();
-    return () => controller.abort();
-  }, [getToken, isLoaded]);
+  const state = useApi(getMe);
 
   if (state.kind === "loading") {
     return <p role="status">Checking your account with the API…</p>;
@@ -47,11 +15,11 @@ export function MyAccount() {
   return (
     <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 rounded-lg border border-neutral-300 p-4 text-sm dark:border-neutral-700">
       <dt className="font-medium">API user ID</dt>
-      <dd>{state.me.id}</dd>
+      <dd>{state.data.id}</dd>
       <dt className="font-medium">Clerk ID</dt>
-      <dd className="break-all">{state.me.clerk_id}</dd>
+      <dd className="break-all">{state.data.clerk_id}</dd>
       <dt className="font-medium">Role</dt>
-      <dd>{state.me.role}</dd>
+      <dd>{state.data.role}</dd>
     </dl>
   );
 }
