@@ -12,14 +12,16 @@ system must also stay within free tiers (N1).
 
 ## Decision
 
-- Use PostgreSQL 17 in every environment.
-- Host it on Neon's free tier. The Neon `main` branch is reserved for
+- Use PostgreSQL 18 in every environment.
+- Host it on Neon's free tier. The Neon `production` branch is reserved for
   production; local development uses a separate `dev` branch.
-- CI runs against a throwaway PostgreSQL 17 service container.
+- CI runs against a throwaway PostgreSQL 18 service container, pinned to the
+  same major version as Neon.
 - Django reads a single `DATABASE_URL` variable (parsed by dj-database-url)
   and refuses to start without it.
-- Connections are reused (`conn_max_age=600`) with health checks, because
-  Neon suspends idle compute and drops connections.
+- Use Neon's direct (non-pooled) connection; Django reuses connections
+  (`conn_max_age=600`) with health checks, because Neon suspends idle
+  compute and drops connections.
 
 ## Alternatives considered
 
@@ -29,6 +31,9 @@ system must also stay within free tiers (N1).
   and maintain; can be added later.
 - **Supabase or Render Postgres**: also viable; Neon was chosen for its
   database branching and generous free compute.
+- **Neon's pooled connection (PgBouncer)**: scales to more connections, but
+  transaction pooling needs extra Django settings; revisit if connection
+  limits are reached.
 
 ## Consequences
 
@@ -42,5 +47,6 @@ system must also stay within free tiers (N1).
 **Negative**
 
 - Local development needs an internet connection.
-- The first query after Neon has been idle is slower (cold start).
+- The first query after Neon has been idle is slower (cold start); the local
+  test run takes about 20 seconds versus under 1 second in CI.
 - The free tier caps storage at 1 GB and compute hours per month (N1).
