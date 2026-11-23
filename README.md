@@ -2,6 +2,9 @@
 
 ![Backend CI](https://github.com/mehak-javed/ai-human-hub/actions/workflows/backend-ci.yml/badge.svg)
 
+**Live demo:** https://ai-human-hub.vercel.app · **API health:** https://ai-human-hub-api.onrender.com/api/health/
+_The API runs on a free instance that sleeps when idle; the first request can take up to a minute._
+
 Clients often struggle to explain what they want built, and developers lose days
 chasing missing details. AI Human Hub lets a client describe their project by
 voice. An AI interviewer asks follow-up questions to fill the gaps, then drafts
