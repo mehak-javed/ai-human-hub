@@ -3,3 +3,4 @@ djangorestframework>=3.16
 python-dotenv>=1.0
 psycopg[binary]>=3.2
 dj-database-url>=2.3
+django-cors-headers>=4.4
