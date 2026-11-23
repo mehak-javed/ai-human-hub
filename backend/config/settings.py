@@ -18,6 +18,11 @@ SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
 DEBUG = os.environ.get("DJANGO_DEBUG", "False") == "True"
 ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
 
+# Render sets this automatically to the service's public hostname.
+RENDER_EXTERNAL_HOSTNAME = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
+if RENDER_EXTERNAL_HOSTNAME:
+    ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
+
 # Application definition
 
 INSTALLED_APPS = [
@@ -35,6 +40,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -90,9 +96,16 @@ TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
 
-# Static files
+# Static files (the Django Admin's CSS and JavaScript), served by WhiteNoise.
+# `collectstatic` copies them into STATIC_ROOT during the build.
 
 STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+}
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
@@ -118,3 +131,22 @@ CORS_ALLOWED_ORIGINS = os.environ.get(
 
 CLERK_SECRET_KEY = os.environ["CLERK_SECRET_KEY"]
 CLERK_AUTHORIZED_PARTIES = CORS_ALLOWED_ORIGINS
+
+# HTTPS hardening, switched on in production with DJANGO_HTTPS_ONLY=True.
+# Off locally and in tests, which use plain http://.
+
+if os.environ.get("DJANGO_HTTPS_ONLY", "False") == "True":
+    # Render terminates HTTPS and forwards requests with this header.
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SECURE_SSL_REDIRECT = True
+    # Render's health checks call the service directly over http.
+    SECURE_REDIRECT_EXEMPT = [r"^api/health/$"]
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    # Tell browsers to use HTTPS only. Start at one hour; raise once stable.
+    SECURE_HSTS_SECONDS = 3600
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+
+# We deliberately don't request HSTS preloading: it is near-permanent and can't
+# apply to a shared onrender.com subdomain.
+SILENCED_SYSTEM_CHECKS = ["security.W021"]

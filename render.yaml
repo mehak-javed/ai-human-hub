@@ -1,0 +1,32 @@
+# Render Blueprint: the backend web service, defined as code.
+# Docs: https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: ai-human-hub-api
+    runtime: python
+    plan: free
+    region: frankfurt
+    rootDir: backend
+    buildCommand: ./build.sh
+    startCommand: gunicorn config.wsgi:application
+    healthCheckPath: /api/health/
+    buildFilter:
+      paths:
+        - backend/**
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.14.10
+      - key: WEB_CONCURRENCY
+        value: "2"
+      - key: DJANGO_DEBUG
+        value: "False"
+      - key: DJANGO_HTTPS_ONLY
+        value: "True"
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false

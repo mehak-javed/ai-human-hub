@@ -53,5 +53,11 @@ jobs:
       - name: Check for missing migrations
         run: python manage.py makemigrations --check --dry-run
 
+      - name: Check production security settings
+        env:
+          DJANGO_HTTPS_ONLY: "True"
+          DJANGO_SECRET_KEY: ci-only-long-random-looking-value-0123456789abcdefghijklmnopqrstuvwxyz
+        run: python manage.py check --deploy --fail-level WARNING
+
       - name: Run tests
         run: pytest -v
