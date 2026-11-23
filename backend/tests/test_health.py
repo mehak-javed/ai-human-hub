@@ -25,3 +25,14 @@ def test_health_does_not_allow_unknown_origins():
     response = APIClient().get(reverse("health"), HTTP_ORIGIN="https://evil.example")
 
     assert "Access-Control-Allow-Origin" not in response
+
+
+
+
+def test_health_ignores_tokens_and_stays_public():
+    client = APIClient()
+    client.credentials(HTTP_AUTHORIZATION="Bearer not-a-real-token")
+
+    response = client.get(reverse("health"))
+
+    assert response.status_code == 200
