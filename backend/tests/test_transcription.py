@@ -1,231 +1,144 @@
-"""Tests for uploading a recording and listing transcripts (C4, AI1, P1, N2).
+"""Tests for the Whisper providers and the switch to the backup (AI1, AI6).
 
-The transcription service is replaced with a fake, so no AI provider is
-called. The provider logic itself is tested in test_transcription.py.
+No real HTTP calls: `httpx.post` is replaced with a fake that records each
+request and returns a canned response.
 """
 
+import base64
+import logging
+
+import httpx
 import pytest
-from django.apps import apps
-from django.conf import settings as django_settings
-from django.contrib.auth import get_user_model
-from django.core.cache import cache
-from django.core.files.uploadedfile import SimpleUploadedFile
-from django.db import models
-from django.urls import reverse
-from rest_framework.test import APIClient
-from rest_framework.throttling import ScopedRateThrottle
 
-from projects import views
-from projects.models import CONSENT_VERSION, Project, Transcript
-from projects.transcription import Transcription, TranscriptionError
+from projects import transcription
+from projects.transcription import TranscriptionError, transcribe
 
-User = get_user_model()
-
-
-@pytest.fixture(autouse=True)
-def clear_throttle_history():
-    cache.clear()
+AUDIO = b"fake-webm-bytes"
+WORKERS_URL_PART = "api.cloudflare.com"
+GROQ_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
 
 
 @pytest.fixture
-def alice():
-    return User.objects.create(username="alice", clerk_id="user_alice")
+def both_providers(settings):
+    settings.CLOUDFLARE_ACCOUNT_ID = "test-account"
+    settings.CLOUDFLARE_AI_TOKEN = "test-cf-token"
+    settings.GROQ_API_KEY = "test-groq-key"
 
 
 @pytest.fixture
-def bob():
-    return User.objects.create(username="bob", clerk_id="user_bob")
+def fake_http(monkeypatch):
+    """Replace httpx.post. Set `fake_http.responses[url_part] = (status, json)`."""
+
+    class FakeHttp:
+        def __init__(self):
+            self.calls = []
+            self.responses = {}
+
+        def post(self, url, **kwargs):
+            self.calls.append((url, kwargs))
+            for url_part, (status, body) in self.responses.items():
+                if url_part in url:
+                    return httpx.Response(status, json=body, request=httpx.Request("POST", url))
+            raise httpx.ConnectError("no fake response", request=httpx.Request("POST", url))
+
+    fake = FakeHttp()
+    monkeypatch.setattr(transcription.httpx, "post", fake.post)
+    return fake
 
 
-@pytest.fixture
-def project(alice):
-    return make_project(alice)
-
-
-@pytest.fixture
-def fake_transcribe(monkeypatch):
-    """Replace the real transcription with one that records its calls."""
-    calls = []
-
-    def fake(audio, content_type):
-        calls.append((audio, content_type))
-        return Transcription(text="I need a booking website.", provider="groq", duration_seconds=12.5)
-
-    monkeypatch.setattr(views, "transcribe", fake)
-    return calls
-
-
-def make_project(owner, status=Project.Status.INTERVIEWING):
-    return Project.objects.create(
-        owner=owner,
-        name="Bakery website",
-        project_type="website",
-        status=status,
-        consent_given_at="2026-11-23T12:00:00Z",
-        consent_version=CONSENT_VERSION,
+def test_workers_ai_is_used_first(both_providers, fake_http):
+    fake_http.responses[WORKERS_URL_PART] = (
+        200,
+        {"result": {"text": " Hello there. ", "transcription_info": {"duration": 4.2}}, "success": True},
     )
 
+    result = transcribe(AUDIO, "audio/webm")
 
-def client_for(user):
-    client = APIClient()
-    client.force_authenticate(user=user)
-    return client
-
-
-def recording(content=b"fake-audio", content_type="audio/webm;codecs=opus"):
-    return SimpleUploadedFile("recording.webm", content, content_type=content_type)
-
-
-def upload(user, project, audio=None):
-    data = {"audio": audio} if audio is not None else {}
-    url = reverse("project-transcripts", args=[project.id])
-    return client_for(user).post(url, data, format="multipart")
+    assert result.text == "Hello there."
+    assert result.provider == "workers_ai"
+    assert result.duration_seconds == 4.2
+    url, kwargs = fake_http.calls[0]
+    assert url.endswith("/accounts/test-account/ai/run/@cf/openai/whisper-large-v3-turbo")
+    assert kwargs["headers"]["Authorization"] == "Bearer test-cf-token"
+    assert kwargs["json"] == {"audio": base64.b64encode(AUDIO).decode("ascii")}
+    assert len(fake_http.calls) == 1
 
 
-@pytest.mark.django_db
-def test_upload_saves_transcript(alice, project, fake_transcribe):
-    response = upload(alice, project, recording())
+def test_falls_back_to_groq_when_workers_ai_fails(both_providers, fake_http, caplog):
+    fake_http.responses[WORKERS_URL_PART] = (429, {"errors": [{"message": "daily limit"}]})
+    fake_http.responses["api.groq.com"] = (200, {"text": "Secret project details", "duration": 3.0})
 
-    assert response.status_code == 201
-    assert response.json()["text"] == "I need a booking website."
-    assert response.json()["duration_seconds"] == 12.5
-    assert fake_transcribe == [(b"fake-audio", "audio/webm")]
-    assert project.transcripts.count() == 1
+    with caplog.at_level(logging.WARNING, logger="projects.transcription"):
+        result = transcribe(AUDIO, "audio/webm")
 
-
-@pytest.mark.django_db
-def test_list_returns_transcripts_oldest_first(alice, project):
-    Transcript.objects.create(project=project, text="First", provider="groq")
-    Transcript.objects.create(project=project, text="Second", provider="groq")
-
-    response = client_for(alice).get(reverse("project-transcripts", args=[project.id]))
-
-    assert response.status_code == 200
-    assert [t["text"] for t in response.json()] == ["First", "Second"]
+    assert result.provider == "groq"
+    assert result.text == "Secret project details"
+    url, kwargs = fake_http.calls[1]
+    assert url == GROQ_URL
+    assert kwargs["files"]["file"] == ("recording.webm", AUDIO, "audio/webm")
+    assert kwargs["data"]["model"] == "whisper-large-v3-turbo"
+    # The switch is logged (AI6), without the transcript (privacy).
+    assert "workers_ai failed: HTTP 429" in caplog.text
+    assert "switched to backup provider groq" in caplog.text
+    assert "Secret" not in caplog.text
 
 
-@pytest.mark.django_db
-def test_cannot_upload_to_another_clients_project(alice, bob, fake_transcribe):
-    bobs_project = make_project(bob)
+def test_malformed_response_also_falls_back(both_providers, fake_http):
+    fake_http.responses[WORKERS_URL_PART] = (200, {"result": {"unexpected": True}})
+    fake_http.responses["api.groq.com"] = (200, {"text": "Backup worked"})
 
-    response = upload(alice, bobs_project, recording())
+    result = transcribe(AUDIO, "audio/mp4")
 
-    assert response.status_code == 404
-    assert fake_transcribe == []
-
-
-@pytest.mark.django_db
-def test_cannot_read_another_clients_transcripts(alice, bob):
-    bobs_project = make_project(bob)
-
-    response = client_for(alice).get(reverse("project-transcripts", args=[bobs_project.id]))
-
-    assert response.status_code == 404
+    assert result.provider == "groq"
+    assert result.duration_seconds is None
+    assert fake_http.calls[1][1]["files"]["file"][0] == "recording.mp4"
 
 
-@pytest.mark.django_db
-def test_upload_requires_sign_in(project):
-    url = reverse("project-transcripts", args=[project.id])
+def test_misconfigured_provider_falls_back_instead_of_crashing(
+    both_providers, fake_http, settings, monkeypatch
+):
+    # A line break pasted into the account ID makes the URL invalid. httpx
+    # raises InvalidURL, which is not an HTTP error; it must still fall back.
+    settings.CLOUDFLARE_ACCOUNT_ID = "test-account\n"
+    fake_http.responses["api.groq.com"] = (200, {"text": "Backup worked"})
 
-    response = APIClient().post(url, {"audio": recording()}, format="multipart")
+    def strict_post(url, **kwargs):
+        if "\n" in url:
+            raise httpx.InvalidURL("Invalid non-printable ASCII character in URL")
+        return fake_http.post(url, **kwargs)
 
-    assert response.status_code == 401
+    monkeypatch.setattr(transcription.httpx, "post", strict_post)
 
+    result = transcribe(AUDIO, "audio/webm")
 
-@pytest.mark.django_db
-def test_missing_file_is_rejected(alice, project, fake_transcribe):
-    response = upload(alice, project)
-
-    assert response.status_code == 400
-    assert "audio" in response.json()
-
-
-@pytest.mark.django_db
-def test_non_audio_file_is_rejected(alice, project, fake_transcribe):
-    response = upload(alice, project, recording(b"<html>", content_type="text/html"))
-
-    assert response.status_code == 400
-    assert fake_transcribe == []
+    assert result.provider == "groq"
 
 
-@pytest.mark.django_db
-def test_too_large_recording_is_rejected(alice, project, fake_transcribe, settings):
-    settings.MAX_RECORDING_BYTES = 1000
+def test_error_when_every_provider_fails(both_providers, fake_http):
+    fake_http.responses[WORKERS_URL_PART] = (500, {})
+    fake_http.responses["api.groq.com"] = (503, {})
 
-    response = upload(alice, project, recording(b"x" * 2000))
-
-    assert response.status_code == 413
-    assert fake_transcribe == []
+    with pytest.raises(TranscriptionError):
+        transcribe(AUDIO, "audio/webm")
 
 
-@pytest.mark.django_db
-def test_provider_outage_returns_503_and_saves_nothing(alice, project, monkeypatch):
-    def failing(audio, content_type):
-        raise TranscriptionError("All transcription providers failed.")
+def test_unconfigured_provider_is_skipped(settings, fake_http):
+    settings.CLOUDFLARE_ACCOUNT_ID = ""
+    settings.CLOUDFLARE_AI_TOKEN = ""
+    settings.GROQ_API_KEY = "test-groq-key"
+    fake_http.responses["api.groq.com"] = (200, {"text": "Only Groq"})
 
-    monkeypatch.setattr(views, "transcribe", failing)
+    result = transcribe(AUDIO, "audio/webm")
 
-    response = upload(alice, project, recording())
-
-    assert response.status_code == 503
-    assert not Transcript.objects.exists()
-
-
-@pytest.mark.django_db
-def test_silence_is_not_saved(alice, project, monkeypatch):
-    monkeypatch.setattr(
-        views, "transcribe", lambda audio, content_type: Transcription("", "groq", 3.0)
-    )
-
-    response = upload(alice, project, recording())
-
-    assert response.status_code == 422
-    assert not Transcript.objects.exists()
+    assert result.provider == "groq"
+    assert len(fake_http.calls) == 1
 
 
-@pytest.mark.django_db
-def test_no_recordings_after_interview_ends(alice, fake_transcribe):
-    finished = make_project(alice, status=Project.Status.AWAITING_CLIENT)
+def test_error_when_no_provider_is_configured(settings, fake_http):
+    settings.CLOUDFLARE_ACCOUNT_ID = ""
+    settings.CLOUDFLARE_AI_TOKEN = ""
+    settings.GROQ_API_KEY = ""
 
-    response = upload(alice, finished, recording())
-
-    assert response.status_code == 409
-    assert fake_transcribe == []
-
-
-@pytest.mark.django_db
-def test_interview_audio_is_capped_at_15_minutes(alice, project, fake_transcribe):
-    Transcript.objects.create(project=project, text="Long", provider="groq", duration_seconds=900)
-
-    response = upload(alice, project, recording())
-
-    assert response.status_code == 400
-    assert fake_transcribe == []
-
-
-@pytest.mark.django_db
-def test_uploads_are_rate_limited(alice, project, fake_transcribe, monkeypatch):
-    monkeypatch.setattr(ScopedRateThrottle, "THROTTLE_RATES", {"transcription": "2/hour"})
-
-    statuses = [upload(alice, project, recording()).status_code for _ in range(3)]
-
-    assert statuses == [201, 201, 429]
-
-
-def test_uploads_are_never_written_to_disk():
-    # P1: Django's default handlers write large uploads to a temporary file.
-    # We only allow the in-memory handler, sized to fit the largest recording.
-    assert django_settings.FILE_UPLOAD_HANDLERS == [
-        "django.core.files.uploadhandler.MemoryFileUploadHandler"
-    ]
-    assert django_settings.FILE_UPLOAD_MAX_MEMORY_SIZE >= django_settings.MAX_RECORDING_BYTES
-
-
-def test_no_model_can_store_audio():
-    # P1: there must be no file or binary column anywhere in our own apps.
-    for app_label in ("accounts", "core", "projects"):
-        for model in apps.get_app_config(app_label).get_models():
-            for field in model._meta.get_fields():
-                assert not isinstance(field, (models.FileField, models.BinaryField)), (
-                    f"{model.__name__}.{field.name} could store audio"
-                )
+    with pytest.raises(TranscriptionError):
+        transcribe(AUDIO, "audio/webm")
+    assert fake_http.calls == []

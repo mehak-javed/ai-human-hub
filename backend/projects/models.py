@@ -1,6 +1,8 @@
 from django.conf import settings
 from django.db import models
 
+from .masking import mask_personal_data
+
 # The version of the recording notice the client agreed to (C2). Change it
 # whenever the notice text in the frontend changes, so we always know exactly
 # which wording each client accepted.
@@ -46,11 +48,13 @@ class Transcript(models.Model):
     """The text of one voice recording (C4, AI1).
 
     There is deliberately no field for the audio itself (P1): only the text
-    is ever stored.
+    is ever stored. `masked_text` is the same text with personal data hidden
+    (AI2); it is the only version ever sent to an AI model.
     """
 
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="transcripts")
     text = models.TextField()
+    masked_text = models.TextField(editable=False)
     provider = models.CharField(max_length=20)
     duration_seconds = models.FloatField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -60,3 +64,8 @@ class Transcript(models.Model):
 
     def __str__(self) -> str:
         return f"Transcript {self.pk} for {self.project}"
+
+    def save(self, *args, **kwargs):
+        # Always recomputed, so the masked copy can never fall out of step.
+        self.masked_text = mask_personal_data(self.text)
+        super().save(*args, **kwargs)

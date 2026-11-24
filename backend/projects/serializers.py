@@ -38,5 +38,5 @@ class ProjectSerializer(serializers.ModelSerializer):
 class TranscriptSerializer(serializers.ModelSerializer):
     class Meta:
         model = Transcript
-        fields = ["id", "text", "provider", "duration_seconds", "created_at"]
+        fields = ["id", "text", "masked_text", "provider", "duration_seconds", "created_at"]
         read_only_fields = fields

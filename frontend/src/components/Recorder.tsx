@@ -41,7 +41,9 @@ function errorMessage(error: unknown): string {
   if (error instanceof ApiError && error.status === 429) {
     return "You've sent a lot of recordings. Please wait a while and try again.";
   }
-  return "Something went wrong sending your recording. Please try again.";
+  // Include the status code, so a screenshot of the error is enough to debug it.
+  const code = error instanceof ApiError ? ` (error ${error.status})` : "";
+  return `Something went wrong sending your recording. Please try again${code}.`;
 }
 
 export function Recorder({ projectId, maxSeconds, onTranscribed }: Props) {

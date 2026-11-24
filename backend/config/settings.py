@@ -143,11 +143,23 @@ FILE_UPLOAD_HANDLERS = ["django.core.files.uploadhandler.MemoryFileUploadHandler
 FILE_UPLOAD_MAX_MEMORY_SIZE = MAX_RECORDING_BYTES
 
 # Speech-to-text providers (AI1, AI6). Optional, so tests and CI don't need
-# them; each provider is used only when its keys are set.
+# them; each provider is used only when its keys are set. .strip() removes
+# spaces or line breaks accidentally pasted into a hosting dashboard.
 
-CLOUDFLARE_ACCOUNT_ID = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
-CLOUDFLARE_AI_TOKEN = os.environ.get("CLOUDFLARE_AI_TOKEN", "")
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+CLOUDFLARE_ACCOUNT_ID = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "").strip()
+CLOUDFLARE_AI_TOKEN = os.environ.get("CLOUDFLARE_AI_TOKEN", "").strip()
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
+
+# Logging: send warnings and errors (including unhandled exceptions with their
+# tracebacks) to the console, where Render's log viewer shows them. Without
+# this, Django only emails errors to ADMINS when DEBUG is off.
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "root": {"handlers": ["console"], "level": "WARNING"},
+}
 
 # HTTPS hardening, switched on in production with DJANGO_HTTPS_ONLY=True.
 # Off locally and in tests, which use plain http://.
