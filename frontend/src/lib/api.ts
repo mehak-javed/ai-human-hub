@@ -73,6 +73,8 @@ export type Project = {
 export type Transcript = {
   id: number;
   text: string;
+  /** The same text with personal data replaced by tags; what the AI sees. */
+  masked_text: string;
   provider: string;
   duration_seconds: number | null;
   created_at: string;

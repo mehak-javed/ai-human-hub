@@ -60,6 +60,18 @@ export function Transcripts({ project }: { project: Project }) {
                 className="rounded-lg border border-neutral-300 p-4 dark:border-neutral-700"
               >
                 <p className="whitespace-pre-wrap">{transcript.text}</p>
+                <details className="mt-3 text-sm">
+                  <summary className="cursor-pointer text-neutral-600 dark:text-neutral-300">
+                    What our AI will see
+                  </summary>
+                  <p className="mt-2 whitespace-pre-wrap rounded-md bg-neutral-100 p-3 dark:bg-neutral-900">
+                    {transcript.masked_text}
+                  </p>
+                  <p className="mt-1 text-xs text-neutral-500">
+                    Names, emails, phone numbers and addresses are hidden before any AI reads your
+                    words.
+                  </p>
+                </details>
                 <p className="mt-2 text-xs text-neutral-500">
                   Recorded at {timeFormat.format(new Date(transcript.created_at))}
                 </p>
