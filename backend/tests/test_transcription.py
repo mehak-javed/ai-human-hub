@@ -94,6 +94,26 @@ def test_malformed_response_also_falls_back(both_providers, fake_http):
     assert fake_http.calls[1][1]["files"]["file"][0] == "recording.mp4"
 
 
+def test_misconfigured_provider_falls_back_instead_of_crashing(
+    both_providers, fake_http, settings, monkeypatch
+):
+    # A line break pasted into the account ID makes the URL invalid. httpx
+    # raises InvalidURL, which is not an HTTP error; it must still fall back.
+    settings.CLOUDFLARE_ACCOUNT_ID = "test-account\n"
+    fake_http.responses["api.groq.com"] = (200, {"text": "Backup worked"})
+
+    def strict_post(url, **kwargs):
+        if "\n" in url:
+            raise httpx.InvalidURL("Invalid non-printable ASCII character in URL")
+        return fake_http.post(url, **kwargs)
+
+    monkeypatch.setattr(transcription.httpx, "post", strict_post)
+
+    result = transcribe(AUDIO, "audio/webm")
+
+    assert result.provider == "groq"
+
+
 def test_error_when_every_provider_fails(both_providers, fake_http):
     fake_http.responses[WORKERS_URL_PART] = (500, {})
     fake_http.responses["api.groq.com"] = (503, {})

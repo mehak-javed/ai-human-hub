@@ -111,7 +111,10 @@ def transcribe(audio: bytes, content_type: str) -> Transcription:
     for index, (name, provider) in enumerate(providers):
         try:
             result = provider(audio, content_type)
-        except (httpx.HTTPError, KeyError, TypeError, ValueError) as exc:
+        except Exception as exc:  # noqa: BLE001
+            # Any failure in one provider (outage, bad response, or a
+            # misconfigured key) must fall back to the next, never crash the
+            # request. Only the error type is logged, never content.
             logger.warning("Transcription provider %s failed: %s", name, describe_failure(exc))
             continue
         if index > 0:
