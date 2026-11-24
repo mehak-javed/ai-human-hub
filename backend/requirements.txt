@@ -7,3 +7,4 @@ django-cors-headers>=4.4
 clerk-backend-api>=7.1
 gunicorn>=23.0
 whitenoise>=6.8
+httpx>=0.28

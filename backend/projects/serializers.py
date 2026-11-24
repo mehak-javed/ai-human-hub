@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Project
+from .models import Project, Transcript
 
 
 class ProjectSerializer(serializers.ModelSerializer):
@@ -33,3 +33,10 @@ class ProjectSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         validated_data.pop("consent")
         return super().create(validated_data)
+
+
+class TranscriptSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Transcript
+        fields = ["id", "text", "provider", "duration_seconds", "created_at"]
+        read_only_fields = fields

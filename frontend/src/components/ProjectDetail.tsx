@@ -2,6 +2,7 @@
 
 import { useCallback } from "react";
 
+import { Transcripts } from "@/components/Transcripts";
 import { getProject, PROJECT_STATUSES, PROJECT_TYPES } from "@/lib/api";
 import { useApi } from "@/lib/useApi";
 
@@ -40,9 +41,7 @@ export function ProjectDetail({ id }: { id: string }) {
         <dt className="font-medium">Consent given</dt>
         <dd>{dateTimeFormat.format(new Date(project.consent_given_at))}</dd>
       </dl>
-      <p className="text-neutral-600 dark:text-neutral-300">
-        Voice recording for this project is coming in the next step.
-      </p>
+      <Transcripts project={project} />
     </>
   );
 }
