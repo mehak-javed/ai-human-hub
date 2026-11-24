@@ -118,6 +118,8 @@ AUTH_USER_MODEL = "accounts.User"
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": ["accounts.authentication.ClerkAuthentication"],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
+    # Per-user limits for endpoints that spend our free AI quota.
+    "DEFAULT_THROTTLE_RATES": {"transcription": "30/hour"},
 }
 
 # CORS: only the listed frontend origins may call the API from a browser.
@@ -132,6 +134,20 @@ CORS_ALLOWED_ORIGINS = os.environ.get(
 
 CLERK_SECRET_KEY = os.environ["CLERK_SECRET_KEY"]
 CLERK_AUTHORIZED_PARTIES = CORS_ALLOWED_ORIGINS
+
+# Voice recordings (P1): uploads are held in memory only and never written to
+# a temporary file on disk. Larger uploads are refused.
+
+MAX_RECORDING_BYTES = 10 * 1024 * 1024
+FILE_UPLOAD_HANDLERS = ["django.core.files.uploadhandler.MemoryFileUploadHandler"]
+FILE_UPLOAD_MAX_MEMORY_SIZE = MAX_RECORDING_BYTES
+
+# Speech-to-text providers (AI1, AI6). Optional, so tests and CI don't need
+# them; each provider is used only when its keys are set.
+
+CLOUDFLARE_ACCOUNT_ID = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
+CLOUDFLARE_AI_TOKEN = os.environ.get("CLOUDFLARE_AI_TOKEN", "")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
 # HTTPS hardening, switched on in production with DJANGO_HTTPS_ONLY=True.
 # Off locally and in tests, which use plain http://.
