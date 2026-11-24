@@ -18,7 +18,9 @@ async function request<T>(path: string, init: RequestInit & { token?: string } =
     cache: "no-store",
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(rest.body ? { "Content-Type": "application/json" } : {}),
+      // JSON bodies are strings. For FormData (file uploads) the browser sets
+      // the multipart Content-Type itself.
+      ...(typeof rest.body === "string" ? { "Content-Type": "application/json" } : {}),
       ...headers,
     },
   });
@@ -68,6 +70,14 @@ export type Project = {
   created_at: string;
 };
 
+export type Transcript = {
+  id: number;
+  text: string;
+  provider: string;
+  duration_seconds: number | null;
+  created_at: string;
+};
+
 export type NewProject = {
   name: string;
   project_type: ProjectType;
@@ -95,5 +105,24 @@ export function createProject(token: string, project: NewProject): Promise<Proje
     token,
     method: "POST",
     body: JSON.stringify(project),
+  });
+}
+
+export function listTranscripts(
+  token: string,
+  projectId: number,
+  signal?: AbortSignal,
+): Promise<Transcript[]> {
+  return request<Transcript[]>(`/api/projects/${projectId}/transcripts/`, { token, signal });
+}
+
+export function uploadRecording(token: string, projectId: number, audio: Blob): Promise<Transcript> {
+  const extension = audio.type.includes("mp4") ? "mp4" : audio.type.includes("ogg") ? "ogg" : "webm";
+  const form = new FormData();
+  form.append("audio", audio, `recording.${extension}`);
+  return request<Transcript>(`/api/projects/${projectId}/transcripts/`, {
+    token,
+    method: "POST",
+    body: form,
   });
 }
