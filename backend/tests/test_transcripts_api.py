@@ -49,7 +49,11 @@ def fake_transcribe(monkeypatch):
 
     def fake(audio, content_type):
         calls.append((audio, content_type))
-        return Transcription(text="I need a booking website.", provider="groq", duration_seconds=12.5)
+        return Transcription(
+            text="I'm Sam, my name is Sam Lee. I need a booking website.",
+            provider="groq",
+            duration_seconds=12.5,
+        )
 
     monkeypatch.setattr(views, "transcribe", fake)
     return calls
@@ -87,10 +91,25 @@ def test_upload_saves_transcript(alice, project, fake_transcribe):
     response = upload(alice, project, recording())
 
     assert response.status_code == 201
-    assert response.json()["text"] == "I need a booking website."
-    assert response.json()["duration_seconds"] == 12.5
+    body = response.json()
+    assert body["text"] == "I'm Sam, my name is Sam Lee. I need a booking website."
+    # AI2: the masked copy is saved alongside and returned for transparency.
+    assert body["masked_text"] == "I'm [NAME], my name is [NAME]. I need a booking website."
+    assert body["duration_seconds"] == 12.5
     assert fake_transcribe == [(b"fake-audio", "audio/webm")]
     assert project.transcripts.count() == 1
+
+
+@pytest.mark.django_db
+def test_masked_text_is_kept_in_step_with_text(project):
+    transcript = Transcript.objects.create(project=project, text="Email sam@shop.com", provider="groq")
+    assert transcript.masked_text == "Email [EMAIL]"
+
+    transcript.text = "Call 07700 900123"
+    transcript.save()
+    transcript.refresh_from_db()
+
+    assert transcript.masked_text == "Call [PHONE]"
 
 
 @pytest.mark.django_db

@@ -6,7 +6,7 @@ from .models import Project, Transcript
 class TranscriptInline(admin.TabularInline):
     model = Transcript
     extra = 0
-    fields = ("created_at", "provider", "duration_seconds", "text")
+    fields = ("created_at", "provider", "duration_seconds", "text", "masked_text")
     readonly_fields = fields
     can_delete = False
 
