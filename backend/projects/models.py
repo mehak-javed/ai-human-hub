@@ -69,3 +69,34 @@ class Transcript(models.Model):
         # Always recomputed, so the masked copy can never fall out of step.
         self.masked_text = mask_personal_data(self.text)
         super().save(*args, **kwargs)
+
+
+class UserStory(models.Model):
+    """One AI-drafted user story (AI4), for the client to review later (C8).
+
+    "As a [role], I want [goal], so that [reason]."
+    """
+
+    class Priority(models.TextChoices):
+        MUST = "must", "Must have"
+        SHOULD = "should", "Should have"
+        NICE = "nice", "Nice to have"
+
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="stories")
+    role = models.CharField(max_length=80)
+    goal = models.CharField(max_length=300)
+    reason = models.CharField(max_length=300)
+    acceptance_criteria = models.JSONField(default=list)
+    priority = models.CharField(max_length=8, choices=Priority.choices)
+    # The order the AI wrote them in, so the list reads the same every time.
+    position = models.PositiveSmallIntegerField()
+    # Which AI wrote it (AI6), kept for measuring AI quality later (AI7).
+    provider = models.CharField(max_length=20)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["position"]
+        verbose_name_plural = "user stories"
+
+    def __str__(self) -> str:
+        return f"As a {self.role}, I want {self.goal}"

@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Project, Transcript
+from .models import Project, Transcript, UserStory
 
 
 class ProjectSerializer(serializers.ModelSerializer):
@@ -39,4 +39,11 @@ class TranscriptSerializer(serializers.ModelSerializer):
     class Meta:
         model = Transcript
         fields = ["id", "text", "masked_text", "provider", "duration_seconds", "created_at"]
+        read_only_fields = fields
+
+
+class UserStorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserStory
+        fields = ["id", "role", "goal", "reason", "acceptance_criteria", "priority", "provider", "created_at"]
         read_only_fields = fields

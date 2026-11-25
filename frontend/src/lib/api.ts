@@ -80,6 +80,26 @@ export type Transcript = {
   created_at: string;
 };
 
+export const STORY_PRIORITIES = {
+  must: "Must have",
+  should: "Should have",
+  nice: "Nice to have",
+} as const;
+
+export type StoryPriority = keyof typeof STORY_PRIORITIES;
+
+/** "As a [role], I want to [goal], so that [reason]." */
+export type UserStory = {
+  id: number;
+  role: string;
+  goal: string;
+  reason: string;
+  acceptance_criteria: string[];
+  priority: StoryPriority;
+  provider: string;
+  created_at: string;
+};
+
 export type NewProject = {
   name: string;
   project_type: ProjectType;
@@ -127,4 +147,12 @@ export function uploadRecording(token: string, projectId: number, audio: Blob): 
     method: "POST",
     body: form,
   });
+}
+
+export function listStories(token: string, projectId: number, signal?: AbortSignal): Promise<UserStory[]> {
+  return request<UserStory[]>(`/api/projects/${projectId}/stories/`, { token, signal });
+}
+
+export function writeStories(token: string, projectId: number): Promise<UserStory[]> {
+  return request<UserStory[]>(`/api/projects/${projectId}/stories/`, { token, method: "POST" });
 }

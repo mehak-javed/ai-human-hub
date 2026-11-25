@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 
 import { Recorder } from "@/components/Recorder";
+import { Stories } from "@/components/Stories";
 import { listTranscripts, type Project, type Transcript } from "@/lib/api";
 import { useApi } from "@/lib/useApi";
 
@@ -80,6 +81,8 @@ export function Transcripts({ project }: { project: Project }) {
           </ol>
         )}
       </section>
+
+      <Stories project={project} hasTranscripts={transcripts.length > 0} />
     </div>
   );
 }
