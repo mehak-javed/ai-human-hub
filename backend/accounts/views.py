@@ -6,4 +6,12 @@ from rest_framework.response import Response
 def me(request):
     """Return the signed-in user. Requires a valid Clerk session token."""
     user = request.user
-    return Response({"id": user.id, "clerk_id": user.clerk_id, "role": user.role})
+    return Response(
+        {
+            "id": user.id,
+            "clerk_id": user.clerk_id,
+            "role": user.role,
+            "email": user.email,
+            "name": user.display_name,
+        }
+    )

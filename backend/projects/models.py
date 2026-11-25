@@ -88,6 +88,7 @@ class UserStory(models.Model):
     class Origin(models.TextChoices):
         AI = "ai", "Written by AI"
         CLIENT = "client", "Added by the client"
+        ADMIN = "admin", "Written by our team"
 
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="stories")
     role = models.CharField(max_length=80)
@@ -110,6 +111,48 @@ class UserStory(models.Model):
 
     def __str__(self) -> str:
         return f"As a {self.role}, I want {self.goal}"
+
+    def snapshot(self) -> dict:
+        """The story as plain data, kept in the change log."""
+        return {
+            "id": self.pk,
+            "role": self.role,
+            "goal": self.goal,
+            "reason": self.reason,
+            "acceptance_criteria": self.acceptance_criteria,
+            "priority": self.priority,
+        }
+
+
+class StoryChange(models.Model):
+    """One change our team made to a client-approved story (A4).
+
+    Records who made it, when, and the stories before and after, so every
+    change can be traced. Rows are never edited or deleted by the app.
+    """
+
+    class Action(models.TextChoices):
+        EDIT = "edit", "Edited"
+        REJECT = "reject", "Rejected"
+        MERGE = "merge", "Merged"
+        SPLIT = "split", "Split"
+
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="story_changes")
+    action = models.CharField(max_length=8, choices=Action.choices)
+    # Kept if the admin's account is later removed, so the record survives.
+    changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name="+"
+    )
+    before = models.JSONField(default=list)
+    after = models.JSONField(default=list)
+    note = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self) -> str:
+        return f"{self.get_action_display()} on {self.project} by {self.changed_by}"
 
 
 class FollowUpQuestion(models.Model):
