@@ -58,6 +58,10 @@ export function FollowUpQuestions({ project, hasTranscripts }: Props) {
 
   const questions = changed ?? state.data;
   const canChange = project.status === "interviewing";
+  // Once the interview has ended, there is nothing to ask any more.
+  if (questions.length === 0 && !canChange) {
+    return null;
+  }
 
   return (
     <section className="flex flex-col gap-4">

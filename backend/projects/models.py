@@ -35,6 +35,8 @@ class Project(models.Model):
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.INTERVIEWING)
     consent_given_at = models.DateTimeField()
     consent_version = models.CharField(max_length=20)
+    # When the client approved their stories (C9); they are locked from then on.
+    approved_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -73,7 +75,7 @@ class Transcript(models.Model):
 
 
 class UserStory(models.Model):
-    """One AI-drafted user story (AI4), for the client to review later (C8).
+    """One user story, drafted by the AI (AI4) and reviewed by the client (C8).
 
     "As a [role], I want [goal], so that [reason]."
     """
@@ -82,6 +84,10 @@ class UserStory(models.Model):
         MUST = "must", "Must have"
         SHOULD = "should", "Should have"
         NICE = "nice", "Nice to have"
+
+    class Origin(models.TextChoices):
+        AI = "ai", "Written by AI"
+        CLIENT = "client", "Added by the client"
 
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="stories")
     role = models.CharField(max_length=80)
@@ -92,7 +98,10 @@ class UserStory(models.Model):
     # The order the AI wrote them in, so the list reads the same every time.
     position = models.PositiveSmallIntegerField()
     # Which AI wrote it (AI6), kept for measuring AI quality later (AI7).
-    provider = models.CharField(max_length=20)
+    provider = models.CharField(max_length=20, blank=True)
+    origin = models.CharField(max_length=8, choices=Origin.choices, default=Origin.AI)
+    # True once the client has changed an AI-written story (AI7).
+    client_edited = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

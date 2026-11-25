@@ -62,6 +62,20 @@ def test_follow_up_answers_are_added_after_the_transcript():
     )
 
 
+def test_rewrite_sends_current_stories_and_change_request():
+    messages = build_messages(
+        ["I want a booking site."],
+        current_stories=[VALID["stories"][0]],
+        change_request="  Make it about cupcakes.  ",
+    )
+
+    content = messages[1]["content"]
+    assert content.startswith("<transcript>\nI want a booking site.\n</transcript>\n\n<current_stories>\n")
+    assert '"goal": "order a cake online"' in content
+    assert content.endswith("</current_stories>\n\n<change_request>\nMake it about cupcakes.\n</change_request>")
+    assert "change request" in messages[0]["content"]
+
+
 def test_generate_stories_returns_validated_stories(monkeypatch):
     sent = []
 

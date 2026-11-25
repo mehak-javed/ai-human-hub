@@ -9,12 +9,15 @@ from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 
+from .masking import mask_personal_data
 from .models import CONSENT_VERSION, FollowUpQuestion, Project, UserStory
 from .questions import QuestionGenerationError, generate_questions
 from .serializers import (
     AnswerSerializer,
+    ChangeRequestSerializer,
     FollowUpQuestionSerializer,
     ProjectSerializer,
+    StoryInputSerializer,
     TranscriptSerializer,
     UserStorySerializer,
 )
@@ -25,7 +28,14 @@ ALLOWED_AUDIO_TYPES = {"audio/webm", "audio/ogg", "audio/mp4", "audio/mpeg", "au
 # N2: at most 15 minutes of audio per interview.
 MAX_INTERVIEW_AUDIO_SECONDS = 15 * 60
 # Actions that spend our free AI quota, and their rate-limit scope.
-THROTTLED_ACTIONS = {"transcripts": "transcription", "stories": "stories", "questions": "questions"}
+THROTTLED_ACTIONS = {
+    "transcripts": "transcription",
+    "questions": "questions",
+    "stories": "stories",
+    "revise_stories": "stories",
+}
+
+AI_BUSY = "Our AI is busy right now. Please try again in a few minutes."
 
 
 def interview_ended() -> Response:
@@ -33,6 +43,24 @@ def interview_ended() -> Response:
         {"detail": "This interview has ended, so it can't be changed."},
         status=status.HTTP_409_CONFLICT,
     )
+
+
+def not_in_review() -> Response:
+    return Response(
+        {"detail": "Your stories can only be changed while they are waiting for your review."},
+        status=status.HTTP_409_CONFLICT,
+    )
+
+
+def story_for_ai(story: UserStory) -> dict:
+    """A story as the AI sees it: client edits may contain personal data (AI2)."""
+    return {
+        "role": mask_personal_data(story.role),
+        "goal": mask_personal_data(story.goal),
+        "reason": mask_personal_data(story.reason),
+        "acceptance_criteria": [mask_personal_data(c) for c in story.acceptance_criteria],
+        "priority": story.priority,
+    }
 
 
 class RecordingRejected(Exception):
@@ -255,42 +283,29 @@ class ProjectViewSet(
         question.save()
         return Response(FollowUpQuestionSerializer(question).data)
 
-    # --- User stories (AI4) --------------------------------------------------
+    # --- User stories (AI4, C8, C9) -----------------------------------------
 
     @action(detail=True, methods=["get", "post"])
     def stories(self, request, pk=None):
-        """GET: the project's user stories. POST: have the AI write them."""
+        """GET: the project's user stories. POST: end the interview and have
+        the AI write them; the project then waits for the client's review."""
         project = self.get_object()
         if request.method == "GET":
             return Response(UserStorySerializer(project.stories.all(), many=True).data)
         return self.write_stories(project)
 
-    def write_stories(self, project):
-        if project.status != Project.Status.INTERVIEWING:
-            return interview_ended()
-
-        # AI2: only the masked text is ever sent to an AI model.
+    def interview_for_ai(self, project):
+        """The masked transcripts and follow-up answers (AI2)."""
         masked_transcripts = list(project.transcripts.values_list("masked_text", flat=True))
-        if not masked_transcripts:
-            return Response(
-                {"detail": "Record your explanation first, then we can write your stories."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
         answers = [
             (q.question, NOT_SURE if q.status == FollowUpQuestion.Status.NOT_SURE else q.masked_answer)
             for q in project.questions.exclude(status=FollowUpQuestion.Status.OPEN)
         ]
+        return masked_transcripts, answers
 
-        try:
-            result = generate_stories(masked_transcripts, answers)
-        except StoryGenerationError:
-            return Response(
-                {"detail": "Our AI is busy right now. Please try again in a few minutes."},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
-
-        # Replace the old drafts in one transaction: the client sees either
-        # the old set or the new one, never a mix or an empty list.
+    def replace_stories(self, project, result):
+        # In one transaction: the client sees either the old set or the new
+        # one, never a mix or an empty list.
         with transaction.atomic():
             project.stories.all().delete()
             UserStory.objects.bulk_create(
@@ -302,7 +317,101 @@ class ProjectViewSet(
                 )
                 for position, story in enumerate(result.stories)
             )
+            project.status = Project.Status.AWAITING_CLIENT
+            project.save(update_fields=["status", "updated_at"])
         return Response(
             UserStorySerializer(project.stories.all(), many=True).data,
             status=status.HTTP_201_CREATED,
         )
+
+    def write_stories(self, project):
+        if project.status != Project.Status.INTERVIEWING:
+            return interview_ended()
+
+        masked_transcripts, answers = self.interview_for_ai(project)
+        if not masked_transcripts:
+            return Response(
+                {"detail": "Record your explanation first, then we can write your stories."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            result = generate_stories(masked_transcripts, answers)
+        except StoryGenerationError:
+            return Response({"detail": AI_BUSY}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        return self.replace_stories(project, result)
+
+    @action(detail=True, methods=["post"], url_path="stories/revise")
+    def revise_stories(self, request, pk=None):
+        """Ask the AI to rewrite the stories, following the client's note (C9)."""
+        project = self.get_object()
+        if project.status != Project.Status.AWAITING_CLIENT:
+            return not_in_review()
+
+        serializer = ChangeRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        masked_transcripts, answers = self.interview_for_ai(project)
+        try:
+            result = generate_stories(
+                masked_transcripts,
+                answers,
+                current_stories=[story_for_ai(story) for story in project.stories.all()],
+                change_request=mask_personal_data(serializer.validated_data["note"]),
+            )
+        except StoryGenerationError:
+            return Response({"detail": AI_BUSY}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        return self.replace_stories(project, result)
+
+    @action(detail=True, methods=["post"], url_path="stories/add")
+    def add_story(self, request, pk=None):
+        """Add a story the AI missed (C8)."""
+        project = self.get_object()
+        if project.status != Project.Status.AWAITING_CLIENT:
+            return not_in_review()
+
+        serializer = StoryInputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        last = project.stories.order_by("-position").first()
+        story = serializer.save(
+            project=project,
+            position=last.position + 1 if last else 0,
+            origin=UserStory.Origin.CLIENT,
+        )
+        return Response(UserStorySerializer(story).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["patch", "delete"], url_path=r"stories/(?P<story_id>\d+)")
+    def story(self, request, pk=None, story_id=None):
+        """PATCH: change a story's wording or priority. DELETE: remove it (C8)."""
+        project = self.get_object()
+        # Looked up through the client's own project, so other clients'
+        # stories are "not found" too (P2).
+        story = get_object_or_404(project.stories, pk=story_id)
+        if project.status != Project.Status.AWAITING_CLIENT:
+            return not_in_review()
+
+        if request.method == "DELETE":
+            story.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        serializer = StoryInputSerializer(story, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        # AI7: remember that the client changed what the AI wrote.
+        story = serializer.save(client_edited=story.origin == UserStory.Origin.AI)
+        return Response(UserStorySerializer(story).data)
+
+    @action(detail=True, methods=["post"])
+    def approve(self, request, pk=None):
+        """Approve the stories and send them to the admin (C9). They lock."""
+        project = self.get_object()
+        if project.status != Project.Status.AWAITING_CLIENT:
+            return not_in_review()
+        if not project.stories.exists():
+            return Response(
+                {"detail": "Add at least one story before approving."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        project.status = Project.Status.AWAITING_ADMIN
+        project.approved_at = timezone.now()
+        project.save(update_fields=["status", "approved_at", "updated_at"])
+        return Response(ProjectSerializer(project).data)
