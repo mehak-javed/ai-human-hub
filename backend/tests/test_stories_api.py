@@ -66,7 +66,7 @@ def fake_generate(monkeypatch):
     """Replace the real AI with one that records what it was sent."""
     calls = []
 
-    def fake(masked_transcripts, answers=None):
+    def fake(masked_transcripts, answers=None, current_stories=None, change_request=None):
         calls.append((masked_transcripts, answers))
         return GeneratedStories(stories=DRAFTS, provider="workers_ai")
 
@@ -105,7 +105,19 @@ def test_writing_stories_saves_them_in_order(alice, project, fake_generate):
     assert body[0]["acceptance_criteria"] == ["I can choose a cake", "I can pick a collection time"]
     assert body[0]["priority"] == "must"
     assert body[0]["provider"] == "workers_ai"
+    assert body[0]["origin"] == "ai"
+    assert body[0]["client_edited"] is False
     assert project.stories.count() == 2
+
+
+@pytest.mark.django_db
+def test_writing_stories_ends_the_interview(alice, project, fake_generate):
+    write_stories(alice, project)
+
+    project.refresh_from_db()
+    assert project.status == Project.Status.AWAITING_CLIENT
+    # From now on the client reviews the stories instead of rewriting them.
+    assert write_stories(alice, project).status_code == 409
 
 
 @pytest.mark.django_db
@@ -148,14 +160,6 @@ def test_follow_up_answers_are_sent_masked(alice, project, fake_generate):
 
 
 @pytest.mark.django_db
-def test_rewriting_replaces_the_old_stories(alice, project, fake_generate):
-    write_stories(alice, project)
-    write_stories(alice, project)
-
-    assert project.stories.count() == 2
-
-
-@pytest.mark.django_db
 def test_list_returns_stories(alice, project, fake_generate):
     write_stories(alice, project)
 
@@ -166,10 +170,8 @@ def test_list_returns_stories(alice, project, fake_generate):
 
 
 @pytest.mark.django_db
-def test_ai_outage_returns_503_and_keeps_the_old_stories(alice, project, fake_generate, monkeypatch):
-    write_stories(alice, project)
-
-    def failing(masked_transcripts, answers=None):
+def test_ai_outage_returns_503_and_the_interview_stays_open(alice, project, monkeypatch):
+    def failing(*args, **kwargs):
         raise StoryGenerationError("All story providers failed.")
 
     monkeypatch.setattr(views, "generate_stories", failing)
@@ -177,7 +179,9 @@ def test_ai_outage_returns_503_and_keeps_the_old_stories(alice, project, fake_ge
     response = write_stories(alice, project)
 
     assert response.status_code == 503
-    assert project.stories.count() == 2
+    assert not project.stories.exists()
+    project.refresh_from_db()
+    assert project.status == Project.Status.INTERVIEWING
 
 
 @pytest.mark.django_db
@@ -239,9 +243,9 @@ def test_no_rewriting_after_interview_ends(alice, fake_generate):
 
 
 @pytest.mark.django_db
-def test_story_writing_is_rate_limited(alice, project, fake_generate, monkeypatch):
+def test_story_writing_is_rate_limited(alice, fake_generate, monkeypatch):
     monkeypatch.setattr(ScopedRateThrottle, "THROTTLE_RATES", {"stories": "2/hour"})
+    # Projects without recordings return 400, but each call still counts.
+    statuses = [write_stories(alice, make_project(alice)).status_code for _ in range(3)]
 
-    statuses = [write_stories(alice, project).status_code for _ in range(3)]
-
-    assert statuses == [201, 201, 429]
+    assert statuses == [400, 400, 429]

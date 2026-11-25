@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 
 import { Transcripts } from "@/components/Transcripts";
-import { getProject, PROJECT_STATUSES, PROJECT_TYPES } from "@/lib/api";
+import { getProject, type Project, PROJECT_STATUSES, PROJECT_TYPES } from "@/lib/api";
 import { useApi } from "@/lib/useApi";
 
 const dateTimeFormat = new Intl.DateTimeFormat("en-GB", {
@@ -17,6 +17,8 @@ export function ProjectDetail({ id }: { id: string }) {
     [id],
   );
   const state = useApi(load);
+  // Set when the project changes on this page, e.g. after approving.
+  const [updated, setUpdated] = useState<Project | null>(null);
 
   if (state.kind === "loading") {
     return <p role="status">Loading project…</p>;
@@ -29,7 +31,7 @@ export function ProjectDetail({ id }: { id: string }) {
     );
   }
 
-  const project = state.data;
+  const project = updated ?? state.data;
   return (
     <>
       <h1 className="text-3xl font-semibold">{project.name}</h1>
@@ -40,8 +42,14 @@ export function ProjectDetail({ id }: { id: string }) {
         <dd>{PROJECT_STATUSES[project.status]}</dd>
         <dt className="font-medium">Consent given</dt>
         <dd>{dateTimeFormat.format(new Date(project.consent_given_at))}</dd>
+        {project.approved_at && (
+          <>
+            <dt className="font-medium">Approved</dt>
+            <dd>{dateTimeFormat.format(new Date(project.approved_at))}</dd>
+          </>
+        )}
       </dl>
-      <Transcripts project={project} />
+      <Transcripts project={project} onProjectChange={setUpdated} />
     </>
   );
 }

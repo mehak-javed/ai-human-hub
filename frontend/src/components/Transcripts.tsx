@@ -14,7 +14,12 @@ const RECORDING_LIMIT_SECONDS = 10 * 60;
 
 const timeFormat = new Intl.DateTimeFormat("en-GB", { timeStyle: "short" });
 
-export function Transcripts({ project }: { project: Project }) {
+type Props = {
+  project: Project;
+  onProjectChange: (project: Project) => void;
+};
+
+export function Transcripts({ project, onProjectChange }: Props) {
   const load = useCallback(
     (token: string, signal: AbortSignal) => listTranscripts(token, project.id, signal),
     [project.id],
@@ -87,7 +92,11 @@ export function Transcripts({ project }: { project: Project }) {
 
       <FollowUpQuestions project={project} hasTranscripts={transcripts.length > 0} />
 
-      <Stories project={project} hasTranscripts={transcripts.length > 0} />
+      <Stories
+        project={project}
+        hasTranscripts={transcripts.length > 0}
+        onProjectChange={onProjectChange}
+      />
     </div>
   );
 }

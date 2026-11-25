@@ -29,6 +29,10 @@ async function request<T>(path: string, init: RequestInit & { token?: string } =
     const body: unknown = await response.json().catch(() => null);
     throw new ApiError(response.status, body);
   }
+  // 204 No Content (e.g. after a delete) has no body to read.
+  if (response.status === 204) {
+    return undefined as T;
+  }
   return (await response.json()) as T;
 }
 
@@ -51,11 +55,12 @@ export const PROJECT_TYPES = {
 
 export type ProjectType = keyof typeof PROJECT_TYPES;
 
+// Labels as the client sees them.
 export const PROJECT_STATUSES = {
-  interviewing: "Interviewing",
-  awaiting_client: "Awaiting client",
-  awaiting_admin: "Awaiting admin",
-  sent_to_github: "Sent to GitHub",
+  interviewing: "Interview in progress",
+  awaiting_client: "Ready for your review",
+  awaiting_admin: "Approved, with our team",
+  sent_to_github: "Sent to the developers",
 } as const;
 
 export type ProjectStatus = keyof typeof PROJECT_STATUSES;
@@ -67,6 +72,7 @@ export type Project = {
   status: ProjectStatus;
   consent_given_at: string;
   consent_version: string;
+  approved_at: string | null;
   created_at: string;
 };
 
@@ -110,15 +116,21 @@ export const STORY_PRIORITIES = {
 
 export type StoryPriority = keyof typeof STORY_PRIORITIES;
 
-/** "As a [role], I want to [goal], so that [reason]." */
-export type UserStory = {
-  id: number;
+/** The parts of a story the client can write. */
+export type StoryInput = {
   role: string;
   goal: string;
   reason: string;
   acceptance_criteria: string[];
   priority: StoryPriority;
+};
+
+/** "As a [role], I want to [goal], so that [reason]." */
+export type UserStory = StoryInput & {
+  id: number;
   provider: string;
+  origin: "ai" | "client";
+  client_edited: boolean;
   created_at: string;
 };
 
@@ -219,4 +231,42 @@ export function answerQuestionByVoice(
     method: "POST",
     body: form,
   });
+}
+
+export function editStory(
+  token: string,
+  projectId: number,
+  storyId: number,
+  changes: Partial<StoryInput>,
+): Promise<UserStory> {
+  return request<UserStory>(`/api/projects/${projectId}/stories/${storyId}/`, {
+    token,
+    method: "PATCH",
+    body: JSON.stringify(changes),
+  });
+}
+
+export function removeStory(token: string, projectId: number, storyId: number): Promise<void> {
+  return request<void>(`/api/projects/${projectId}/stories/${storyId}/`, { token, method: "DELETE" });
+}
+
+export function addStory(token: string, projectId: number, story: StoryInput): Promise<UserStory> {
+  return request<UserStory>(`/api/projects/${projectId}/stories/add/`, {
+    token,
+    method: "POST",
+    body: JSON.stringify(story),
+  });
+}
+
+/** Ask the AI to rewrite all the stories, following the client's note. */
+export function reviseStories(token: string, projectId: number, note: string): Promise<UserStory[]> {
+  return request<UserStory[]>(`/api/projects/${projectId}/stories/revise/`, {
+    token,
+    method: "POST",
+    body: JSON.stringify({ note }),
+  });
+}
+
+export function approveStories(token: string, projectId: number): Promise<Project> {
+  return request<Project>(`/api/projects/${projectId}/approve/`, { token, method: "POST" });
 }

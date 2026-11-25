@@ -18,10 +18,11 @@ class ProjectSerializer(serializers.ModelSerializer):
             "consent",
             "consent_given_at",
             "consent_version",
+            "approved_at",
             "created_at",
         ]
         # The client can never set these, even by sending them in the request.
-        read_only_fields = ["status", "consent_given_at", "consent_version", "created_at"]
+        read_only_fields = ["status", "consent_given_at", "consent_version", "approved_at", "created_at"]
 
     def validate_consent(self, value: bool) -> bool:
         if value is not True:
@@ -45,8 +46,39 @@ class TranscriptSerializer(serializers.ModelSerializer):
 class UserStorySerializer(serializers.ModelSerializer):
     class Meta:
         model = UserStory
-        fields = ["id", "role", "goal", "reason", "acceptance_criteria", "priority", "provider", "created_at"]
+        fields = [
+            "id",
+            "role",
+            "goal",
+            "reason",
+            "acceptance_criteria",
+            "priority",
+            "provider",
+            "origin",
+            "client_edited",
+            "created_at",
+        ]
         read_only_fields = fields
+
+
+class StoryInputSerializer(serializers.ModelSerializer):
+    """The parts of a story a client may write when adding or editing one (C8)."""
+
+    acceptance_criteria = serializers.ListField(
+        child=serializers.CharField(max_length=300),
+        min_length=1,
+        max_length=8,
+    )
+
+    class Meta:
+        model = UserStory
+        fields = ["role", "goal", "reason", "acceptance_criteria", "priority"]
+
+
+class ChangeRequestSerializer(serializers.Serializer):
+    """The client's note asking the AI to rewrite the stories (C9)."""
+
+    note = serializers.CharField(max_length=1000)
 
 
 class FollowUpQuestionSerializer(serializers.ModelSerializer):
