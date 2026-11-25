@@ -36,3 +36,9 @@ services:
         sync: false
       - key: GROQ_API_KEY
         sync: false
+      - key: GITHUB_APP_ID
+        sync: false
+      - key: GITHUB_APP_PRIVATE_KEY
+        sync: false
+      - key: GITHUB_APP_SLUG
+        sync: false

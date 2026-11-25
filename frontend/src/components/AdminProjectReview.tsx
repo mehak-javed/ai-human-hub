@@ -2,6 +2,7 @@
 
 import { type FormEvent, useCallback, useState } from "react";
 
+import { GitHubDelivery } from "@/components/GitHubDelivery";
 import {
   buttonClass,
   FormButtons,
@@ -154,6 +155,8 @@ export function AdminProjectReview({ id }: { id: string }) {
           ))}
         </ol>
       </section>
+
+      <GitHubDelivery project={project} onChanged={changed} />
 
       <ChangeLog changes={project.changes} />
     </div>

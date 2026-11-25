@@ -1,4 +1,5 @@
-"""The team's side of the API: review client-approved stories (A3, A4).
+"""The team's side of the API: review client-approved stories and send
+them to GitHub (A3, A4, A5, A6).
 
 Only users with the Admin role can call these endpoints (IsAdminRole).
 Admins see the masked transcripts and answers, never the raw text: they
@@ -16,7 +17,9 @@ from rest_framework.response import Response
 
 from accounts.permissions import IsAdminRole
 
-from .models import FollowUpQuestion, Project, StoryChange, UserStory
+from . import github
+from .delivery import send_to_github
+from .models import FollowUpQuestion, GitHubPush, Project, StoryChange, UserStory
 from .serializers import StoryInputSerializer, UserStorySerializer
 
 MAX_STORIES_IN_ONE_CHANGE = 10
@@ -37,7 +40,37 @@ class AdminProjectListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Project
-        fields = ["id", "name", "project_type", "status", "client", "story_count", "approved_at", "created_at"]
+        fields = [
+            "id",
+            "name",
+            "project_type",
+            "status",
+            "client",
+            "story_count",
+            "github_repo",
+            "approved_at",
+            "sent_to_github_at",
+            "created_at",
+        ]
+
+
+class GitHubPushSerializer(serializers.ModelSerializer):
+    pushed_by = serializers.CharField(source="pushed_by.display_name", default="(removed user)")
+
+    class Meta:
+        model = GitHubPush
+        fields = [
+            "id",
+            "repo",
+            "status",
+            "issues_created",
+            "issues_updated",
+            "commit_url",
+            "error",
+            "pushed_by",
+            "started_at",
+            "finished_at",
+        ]
 
 
 class StoryChangeSerializer(serializers.ModelSerializer):
@@ -53,9 +86,25 @@ class AdminProjectDetailSerializer(AdminProjectListSerializer):
     answers = serializers.SerializerMethodField()
     stories = UserStorySerializer(many=True)
     changes = StoryChangeSerializer(source="story_changes", many=True)
+    pushes = serializers.SerializerMethodField()
+    github = serializers.SerializerMethodField()
 
     class Meta(AdminProjectListSerializer.Meta):
-        fields = AdminProjectListSerializer.Meta.fields + ["masked_transcripts", "answers", "stories", "changes"]
+        fields = AdminProjectListSerializer.Meta.fields + [
+            "masked_transcripts",
+            "answers",
+            "stories",
+            "changes",
+            "pushes",
+            "github",
+        ]
+
+    def get_pushes(self, project) -> list[dict]:
+        return GitHubPushSerializer(project.github_pushes.all()[:5], many=True).data
+
+    def get_github(self, project) -> dict:
+        """Whether our GitHub App is set up, and where to install it."""
+        return {"configured": github.is_configured(), "install_url": github.install_url()}
 
     def get_masked_transcripts(self, project) -> list[str]:
         return list(project.transcripts.values_list("masked_text", flat=True))
@@ -68,6 +117,10 @@ class AdminProjectDetailSerializer(AdminProjectListSerializer):
             }
             for q in project.questions.exclude(status=FollowUpQuestion.Status.OPEN)
         ]
+
+
+class ConnectRepoSerializer(serializers.Serializer):
+    repo = serializers.CharField(max_length=140)
 
 
 class RejectSerializer(serializers.Serializer):
@@ -104,6 +157,13 @@ def not_awaiting_admin() -> Response:
     return Response(
         {"detail": "Stories can only be changed while the project is waiting for our review."},
         status=status.HTTP_409_CONFLICT,
+    )
+
+
+def github_not_set_up() -> Response:
+    return Response(
+        {"detail": "Our GitHub App isn't set up yet, so nothing can be sent to GitHub."},
+        status=status.HTTP_503_SERVICE_UNAVAILABLE,
     )
 
 
@@ -265,3 +325,56 @@ class AdminProjectViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, view
                 part.refresh_from_db()
             self.record(project, StoryChange.Action.SPLIT, before, [part.snapshot() for part in created])
         return Response(UserStorySerializer(created, many=True).data, status=status.HTTP_201_CREATED)
+
+    # --- GitHub (A5, A6) ------------------------------------------------------
+
+    @action(detail=True, methods=["post"], url_path="github")
+    def connect_github(self, request, pk=None):
+        """Link the project to a private repo and test the connection (A6)."""
+        project = self.get_object()
+        if project.status == Project.Status.SENT_TO_GITHUB:
+            return Response(
+                {"detail": "This project has already been sent to GitHub."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        if not github.is_configured():
+            return github_not_set_up()
+
+        serializer = ConnectRepoSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            with github.make_http_client() as http:
+                repo = github.GitHub(http).connect(serializer.validated_data["repo"].strip())
+        except github.GitHubError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        project.github_repo = repo.full_name
+        project.save(update_fields=["github_repo", "updated_at"])
+        return Response({"repo": repo.full_name, "url": repo.html_url})
+
+    @action(detail=True, methods=["post"], url_path="send")
+    def send(self, request, pk=None):
+        """Send the reviewed stories to GitHub as issues plus requirements.md (A5)."""
+        project = self.get_object()
+        if project.status != Project.Status.AWAITING_ADMIN:
+            return not_awaiting_admin()
+        if not github.is_configured():
+            return github_not_set_up()
+        if not project.github_repo:
+            return Response(
+                {"detail": "Connect a GitHub repository first."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not project.stories.exists():
+            return Response(
+                {"detail": "There are no stories to send."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        push = send_to_github(project, request.user)
+        project.refresh_from_db()
+        body = {"push": GitHubPushSerializer(push).data, "status": project.status}
+        if push.status == GitHubPush.Status.FAILED:
+            # 502: GitHub, not our request, was the problem. Safe to try again.
+            return Response(body, status=status.HTTP_502_BAD_GATEWAY)
+        return Response(body)

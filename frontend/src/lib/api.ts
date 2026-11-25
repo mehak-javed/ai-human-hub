@@ -282,8 +282,24 @@ export type AdminProject = {
   status: ProjectStatus;
   client: { id: number; email: string; name: string };
   story_count: number;
+  /** The connected private repository, as "owner/name", or "". */
+  github_repo: string;
   approved_at: string | null;
+  sent_to_github_at: string | null;
   created_at: string;
+};
+
+export type GitHubPush = {
+  id: number;
+  repo: string;
+  status: "running" | "succeeded" | "failed";
+  issues_created: number;
+  issues_updated: number;
+  commit_url: string;
+  error: string;
+  pushed_by: string;
+  started_at: string;
+  finished_at: string | null;
 };
 
 export type StoryChange = {
@@ -302,6 +318,8 @@ export type AdminProjectDetail = AdminProject & {
   answers: { question: string; answer: string }[];
   stories: UserStory[];
   changes: StoryChange[];
+  pushes: GitHubPush[];
+  github: { configured: boolean; install_url: string };
 };
 
 export function listAdminProjects(
@@ -362,4 +380,24 @@ export function adminSplitStory(
     method: "POST",
     body: JSON.stringify({ stories }),
   });
+}
+
+/** Link a project to a private repo; the API tests the connection first. */
+export function connectGitHubRepo(
+  token: string,
+  projectId: number,
+  repo: string,
+): Promise<{ repo: string; url: string }> {
+  return request(`/api/admin/projects/${projectId}/github/`, {
+    token,
+    method: "POST",
+    body: JSON.stringify({ repo }),
+  });
+}
+
+export type SendResult = { push: GitHubPush; status: ProjectStatus };
+
+/** Send the stories to GitHub. A failed push comes back as ApiError 502 with a SendResult body. */
+export function sendToGitHub(token: string, projectId: number): Promise<SendResult> {
+  return request<SendResult>(`/api/admin/projects/${projectId}/send/`, { token, method: "POST" });
 }
