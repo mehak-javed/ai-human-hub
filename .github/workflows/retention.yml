@@ -1,0 +1,66 @@
+name: Data retention
+
+# P3: every day, delete projects older than the retention period from the
+# production database. Does nothing until the PROD_DATABASE_URL repository
+# secret is set (Settings -> Secrets and variables -> Actions).
+
+on:
+  schedule:
+    - cron: "17 3 * * *" # 03:17 UTC daily
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Only count what would be deleted"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  delete-expired-projects:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+      # Required by settings.py but unused by this command.
+      DJANGO_SECRET_KEY: retention-job-only
+      CLERK_SECRET_KEY: unused-by-retention-job
+
+    steps:
+      - name: Skip until the database secret is set
+        id: secret
+        # Runs before checkout, so not inside backend/.
+        working-directory: .
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "PROD_DATABASE_URL isn't set, so nothing was deleted."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.secret.outputs.ready == 'true'
+        uses: actions/checkout@v5
+
+      - if: steps.secret.outputs.ready == 'true'
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - if: steps.secret.outputs.ready == 'true'
+        name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - if: steps.secret.outputs.ready == 'true'
+        name: Delete expired projects
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            python manage.py delete_expired_projects --dry-run
+          else
+            python manage.py delete_expired_projects
+          fi

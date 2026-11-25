@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 
+import { ProjectActions } from "@/components/ProjectActions";
 import { Transcripts } from "@/components/Transcripts";
 import { getProject, type Project, PROJECT_STATUSES, PROJECT_TYPES } from "@/lib/api";
 import { useApi } from "@/lib/useApi";
@@ -50,6 +51,7 @@ export function ProjectDetail({ id }: { id: string }) {
         )}
       </dl>
       <Transcripts project={project} onProjectChange={setUpdated} />
+      <ProjectActions project={project} />
     </>
   );
 }

@@ -73,6 +73,9 @@ flowchart LR
 - GitHub access uses a GitHub App, never a personal token. Each push gets a
   token limited to one **private** repository and to issues and contents, and
   it expires within an hour. Public repositories are refused.
+- Clients can delete a project themselves; everything in it goes at once,
+  and only a content-free record of the deletion is kept. Projects are
+  deleted automatically 12 months after delivery.
 - Secrets live only in environment variables; CORS allows only our frontend;
   HTTPS and HSTS are enforced; AI calls are rate-limited per user.
 
@@ -158,8 +161,8 @@ Sending to GitHub needs a GitHub App: see [docs/github-app-setup.md](docs/github
 - [x] Team review (edit, merge, split, reject) with a change log
 - [x] Send to GitHub: issues and requirements.md
 - [ ] Dashboards: AI usage against free limits, AI acceptance rate
-- [ ] Privacy extras: delete my data, retention clean-up, export, backups
-- [ ] Invite-only sign-up and a privacy notice page
+- [x] Privacy: delete my project, Markdown export, 12-month retention clean-up, privacy notice
+- [ ] Weekly database backups and invite-only sign-up
 
 See [docs/use-cases.md](docs/use-cases.md) for the full specification.
 

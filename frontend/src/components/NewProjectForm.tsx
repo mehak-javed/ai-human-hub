@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -93,8 +94,13 @@ export function NewProjectForm() {
           <li>Your voice recording is turned into text and the audio is deleted straight away.</li>
           <li>Names, emails, phone numbers and addresses are hidden before any AI sees the text.</li>
           <li>We keep the text and your approved user stories for up to 12 months.</li>
-          <li>You can ask us to delete your project and its data at any time.</li>
+          <li>You can delete your project and all its data yourself, at any time.</li>
         </ul>
+        <p className="text-sm">
+          <Link href="/privacy" className="underline" target="_blank">
+            Read our full privacy notice
+          </Link>
+        </p>
         <label className="flex items-start gap-2">
           <input
             type="checkbox"

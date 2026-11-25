@@ -142,9 +142,11 @@ def test_other_clients_project_is_not_found(alice, bob):
 
 
 @pytest.mark.django_db
-def test_projects_cannot_be_changed_or_deleted_yet(alice):
+def test_projects_cannot_be_changed_after_creation(alice):
+    # Deleting is allowed (C11, see test_privacy_api.py); editing and
+    # replacing a project are not.
     project = make_project(alice)
     url = reverse("project-detail", args=[project.id])
 
     assert client_for(alice).patch(url, {"name": "New"}, format="json").status_code == 405
-    assert client_for(alice).delete(url).status_code == 405
+    assert client_for(alice).put(url, {"name": "New"}, format="json").status_code == 405

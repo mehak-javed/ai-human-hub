@@ -158,6 +158,12 @@ GITHUB_APP_ID = os.environ.get("GITHUB_APP_ID", "").strip()
 GITHUB_APP_PRIVATE_KEY = os.environ.get("GITHUB_APP_PRIVATE_KEY", "").strip()
 GITHUB_APP_SLUG = os.environ.get("GITHUB_APP_SLUG", "").strip()
 
+# How long a project is kept after it is sent to GitHub, or after it was last
+# changed if it never got that far (P3). Deleted daily by
+# `python manage.py delete_expired_projects`.
+
+DATA_RETENTION_DAYS = int(os.environ.get("DATA_RETENTION_DAYS", "365"))
+
 # Logging: send warnings and errors (including unhandled exceptions with their
 # tracebacks) to the console, where Render's log viewer shows them. Without
 # this, Django only emails errors to ADMINS when DEBUG is off.
