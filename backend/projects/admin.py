@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import FollowUpQuestion, GitHubPush, Project, StoryChange, Transcript, UserStory
+from .models import DeletionRecord, FollowUpQuestion, GitHubPush, Project, StoryChange, Transcript, UserStory
 
 
 class TranscriptInline(admin.TabularInline):
@@ -58,3 +58,20 @@ class ProjectAdmin(admin.ModelAdmin):
     # Consent is evidence of what the client agreed to; nobody should edit it.
     readonly_fields = ("consent_given_at", "consent_version", "approved_at", "sent_to_github_at", "created_at", "updated_at")
     inlines = [TranscriptInline, FollowUpQuestionInline, UserStoryInline, StoryChangeInline, GitHubPushInline]
+
+
+@admin.register(DeletionRecord)
+class DeletionRecordAdmin(admin.ModelAdmin):
+    """Read-only proof of deletions (C11, P3)."""
+
+    list_display = ("project_id", "reason", "transcripts", "stories", "project_created_at", "deleted_at")
+    list_filter = ("reason",)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

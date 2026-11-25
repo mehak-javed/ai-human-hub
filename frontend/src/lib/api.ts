@@ -185,6 +185,29 @@ export function uploadRecording(token: string, projectId: number, audio: Blob): 
   });
 }
 
+/** Delete the project and everything in it (C11). Can't be undone. */
+export function deleteProject(token: string, projectId: number): Promise<void> {
+  return request<void>(`/api/projects/${projectId}/`, { token, method: "DELETE" });
+}
+
+/** The approved requirements as a Markdown file, and its suggested name (P4). */
+export async function downloadRequirements(
+  token: string,
+  projectId: number,
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await fetch(`${API_URL}/api/projects/${projectId}/export/`, {
+    cache: "no-store",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    const body: unknown = await response.json().catch(() => null);
+    throw new ApiError(response.status, body);
+  }
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? "requirements.md";
+  return { blob: await response.blob(), filename };
+}
+
 export function listStories(token: string, projectId: number, signal?: AbortSignal): Promise<UserStory[]> {
   return request<UserStory[]>(`/api/projects/${projectId}/stories/`, { token, signal });
 }

@@ -1,17 +1,21 @@
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Sum
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.utils.text import slugify
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 
+from .delivery import requirements_markdown
 from .masking import mask_personal_data
-from .models import CONSENT_VERSION, FollowUpQuestion, Project, UserStory
+from .models import CONSENT_VERSION, DeletionRecord, FollowUpQuestion, Project, UserStory
 from .questions import QuestionGenerationError, generate_questions
+from .retention import delete_project
 from .serializers import (
     AnswerSerializer,
     ChangeRequestSerializer,
@@ -129,9 +133,11 @@ class ProjectViewSet(
     mixins.CreateModelMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
+    mixins.DestroyModelMixin,
     viewsets.GenericViewSet,
 ):
-    """The signed-in client's own projects: list, create (C3) and view one."""
+    """The signed-in client's own projects: list, create (C3), view one and
+    delete one (C11)."""
 
     serializer_class = ProjectSerializer
 
@@ -151,6 +157,25 @@ class ProjectViewSet(
             self.throttle_scope = scope
             return [ScopedRateThrottle()]
         return super().get_throttles()
+
+    def perform_destroy(self, project):
+        # C11: everything is removed at once, and only IDs and counts are kept.
+        delete_project(project, DeletionRecord.Reason.CLIENT_REQUEST)
+
+    @action(detail=True, methods=["get"])
+    def export(self, request, pk=None):
+        """Download the approved requirements as Markdown (P4)."""
+        project = self.get_object()
+        if project.status not in (Project.Status.AWAITING_ADMIN, Project.Status.SENT_TO_GITHUB):
+            return Response(
+                {"detail": "You can download your requirements once you've approved them."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        markdown = requirements_markdown(project, list(project.stories.order_by("position")))
+        response = HttpResponse(markdown, content_type="text/markdown; charset=utf-8")
+        filename = f"{slugify(project.name) or 'project'}-requirements.md"
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
 
     def perform_create(self, serializer):
         # Owner and consent details come from the server, never the request.

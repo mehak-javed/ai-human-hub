@@ -52,8 +52,11 @@ def issue_for(project: Project, story: UserStory) -> dict:
     }
 
 
-def requirements_markdown(project: Project, stories: list[UserStory], repo: Repo) -> str:
-    """The whole brief in one file (G2)."""
+def requirements_markdown(project: Project, stories: list[UserStory], repo: Repo | None = None) -> str:
+    """The whole brief in one file (G2). Also the client's own download (P4).
+
+    With a repo, each story links to its GitHub issue.
+    """
     lines = [
         f"# {project.name}: requirements",
         "",
@@ -75,8 +78,11 @@ def requirements_markdown(project: Project, stories: list[UserStory], repo: Repo
             continue
         lines += [f"## {priority.label}", ""]
         for story in group:
-            issue = f" ([#{story.github_issue_number}]({repo.html_url}/issues/{story.github_issue_number}))"
-            lines.append(f"### {story.goal[:1].upper() + story.goal[1:]}{issue if story.github_issue_number else ''}")
+            title = story.goal[:1].upper() + story.goal[1:]
+            if repo and story.github_issue_number:
+                number = story.github_issue_number
+                title += f" ([#{number}]({repo.html_url}/issues/{number}))"
+            lines.append(f"### {title}")
             lines += ["", sentence(story), ""]
             lines += [f"- [ ] {criterion}" for criterion in story.acceptance_criteria]
             lines.append("")

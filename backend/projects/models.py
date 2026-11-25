@@ -7,7 +7,7 @@ from .questions import TOPICS
 # The version of the recording notice the client agreed to (C2). Change it
 # whenever the notice text in the frontend changes, so we always know exactly
 # which wording each client accepted.
-CONSENT_VERSION = "2026-11-23"
+CONSENT_VERSION = "2026-11-25"
 
 
 class Project(models.Model):
@@ -223,3 +223,29 @@ class GitHubPush(models.Model):
 
     def __str__(self) -> str:
         return f"Push of {self.project} to {self.repo}: {self.get_status_display()}"
+
+
+class DeletionRecord(models.Model):
+    """Proof that a project was deleted (C11, P3).
+
+    Deliberately holds no content and no name: only IDs, counts and why, so
+    the record itself keeps nothing personal.
+    """
+
+    class Reason(models.TextChoices):
+        CLIENT_REQUEST = "client_request", "Deleted by the client"
+        RETENTION = "retention", "Retention period ended"
+
+    project_id = models.PositiveBigIntegerField()
+    owner_id = models.PositiveBigIntegerField(null=True)
+    reason = models.CharField(max_length=16, choices=Reason.choices)
+    transcripts = models.PositiveIntegerField(default=0)
+    stories = models.PositiveIntegerField(default=0)
+    project_created_at = models.DateTimeField()
+    deleted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-deleted_at"]
+
+    def __str__(self) -> str:
+        return f"Project {self.project_id}: {self.get_reason_display()}"

@@ -28,6 +28,7 @@ export default function RootLayout({
             <nav className="flex items-center gap-3 text-sm">
               <Suspense>
                 <Show when="signed-out">
+                  <Link href="/privacy">Privacy</Link>
                   <SignInButton />
                   <SignUpButton />
                 </Show>
@@ -40,6 +41,11 @@ export default function RootLayout({
             </nav>
           </header>
           {children}
+          <footer className="border-t border-neutral-200 px-4 py-6 text-center text-sm text-neutral-500 dark:border-neutral-800">
+            <Link href="/privacy" className="underline">
+              Privacy notice
+            </Link>
+          </footer>
         </ClerkProvider>
       </body>
     </html>
