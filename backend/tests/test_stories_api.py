@@ -1,7 +1,7 @@
-"""Tests for writing and listing a project's user stories (AI4, AI2, P2).
+"""Tests for writing and listing a project's user stories (AI4, AI2, C5, P2).
 
-The AI is replaced with a fake, so no provider is called. The provider
-logic itself is tested in test_stories.py.
+The AI is replaced with a fake, so no provider is called. Retries and the
+backup provider are tested in test_llm.py.
 """
 
 import pytest
@@ -12,7 +12,7 @@ from rest_framework.test import APIClient
 from rest_framework.throttling import ScopedRateThrottle
 
 from projects import views
-from projects.models import CONSENT_VERSION, Project, Transcript, UserStory
+from projects.models import CONSENT_VERSION, FollowUpQuestion, Project, Transcript, UserStory
 from projects.stories import GeneratedStories, StoryDraft, StoryGenerationError
 
 User = get_user_model()
@@ -66,8 +66,8 @@ def fake_generate(monkeypatch):
     """Replace the real AI with one that records what it was sent."""
     calls = []
 
-    def fake(masked_transcripts):
-        calls.append(masked_transcripts)
+    def fake(masked_transcripts, answers=None):
+        calls.append((masked_transcripts, answers))
         return GeneratedStories(stories=DRAFTS, provider="workers_ai")
 
     monkeypatch.setattr(views, "generate_stories", fake)
@@ -113,10 +113,38 @@ def test_only_masked_text_is_sent_to_the_ai(alice, project, fake_generate):
     write_stories(alice, project)
 
     # AI2: the AI gets the masked copy, never the client's real details.
-    [sent] = fake_generate
+    [(sent, answers)] = fake_generate
     assert sent == ["My name is [NAME], email [EMAIL]. Customers should order cakes online."]
     assert "Sam" not in str(sent)
     assert "sam@bakery.com" not in str(sent)
+    assert answers == []
+
+
+@pytest.mark.django_db
+def test_follow_up_answers_are_sent_masked(alice, project, fake_generate):
+    def ask(position, status, answer=""):
+        FollowUpQuestion.objects.create(
+            project=project,
+            topic="users",
+            question=f"Question {position}?",
+            position=position,
+            status=status,
+            answer=answer,
+            provider="groq",
+        )
+
+    ask(0, FollowUpQuestion.Status.ANSWERED, "My manager Priya Shah takes orders.")
+    ask(1, FollowUpQuestion.Status.NOT_SURE)
+    ask(2, FollowUpQuestion.Status.OPEN)
+
+    write_stories(alice, project)
+
+    [(_, answers)] = fake_generate
+    # Unanswered questions are left out; "Not sure" is passed on as such.
+    assert answers == [
+        ("Question 0?", "My manager [NAME] takes orders."),
+        ("Question 1?", "Not sure"),
+    ]
 
 
 @pytest.mark.django_db
@@ -141,7 +169,7 @@ def test_list_returns_stories(alice, project, fake_generate):
 def test_ai_outage_returns_503_and_keeps_the_old_stories(alice, project, fake_generate, monkeypatch):
     write_stories(alice, project)
 
-    def failing(masked_transcripts):
+    def failing(masked_transcripts, answers=None):
         raise StoryGenerationError("All story providers failed.")
 
     monkeypatch.setattr(views, "generate_stories", failing)

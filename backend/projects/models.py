@@ -2,6 +2,7 @@ from django.conf import settings
 from django.db import models
 
 from .masking import mask_personal_data
+from .questions import TOPICS
 
 # The version of the recording notice the client agreed to (C2). Change it
 # whenever the notice text in the frontend changes, so we always know exactly
@@ -100,3 +101,39 @@ class UserStory(models.Model):
 
     def __str__(self) -> str:
         return f"As a {self.role}, I want {self.goal}"
+
+
+class FollowUpQuestion(models.Model):
+    """A question the AI asks to fill a gap in the client's explanation (AI3, C5).
+
+    `masked_answer` is the answer with personal data hidden (AI2); it is the
+    only version ever sent to an AI model.
+    """
+
+    class Status(models.TextChoices):
+        OPEN = "open", "Waiting for an answer"
+        ANSWERED = "answered", "Answered"
+        NOT_SURE = "not_sure", "Not sure"
+
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="questions")
+    topic = models.CharField(max_length=16, choices=list(TOPICS.items()))
+    question = models.CharField(max_length=300)
+    # The order the AI asked them in: the most important first.
+    position = models.PositiveSmallIntegerField()
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.OPEN)
+    answer = models.TextField(blank=True)
+    masked_answer = models.TextField(blank=True, editable=False)
+    provider = models.CharField(max_length=20)
+    created_at = models.DateTimeField(auto_now_add=True)
+    answered_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["position"]
+
+    def __str__(self) -> str:
+        return self.question
+
+    def save(self, *args, **kwargs):
+        # Always recomputed, so the masked copy can never fall out of step.
+        self.masked_answer = mask_personal_data(self.answer)
+        super().save(*args, **kwargs)

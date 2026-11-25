@@ -3,15 +3,17 @@
 import { useAuth } from "@clerk/nextjs";
 import { useEffect, useRef, useState } from "react";
 
-import { ApiError, type Transcript, uploadRecording } from "@/lib/api";
+import { ApiError } from "@/lib/api";
 
 type Phase = "idle" | "recording" | "paused" | "recorded" | "sending";
 
 type Props = {
-  projectId: number;
   /** The longest recording allowed, in seconds. */
   maxSeconds: number;
-  onTranscribed: (transcript: Transcript) => void;
+  /** Uploads the recording; throws ApiError if the server refuses it. */
+  send: (token: string, audio: Blob) => Promise<void>;
+  title?: string;
+  hint?: string;
 };
 
 // Opus in WebM (Chrome, Firefox, Edge) or AAC in MP4 (Safari, iPhone).
@@ -46,7 +48,12 @@ function errorMessage(error: unknown): string {
   return `Something went wrong sending your recording. Please try again${code}.`;
 }
 
-export function Recorder({ projectId, maxSeconds, onTranscribed }: Props) {
+export function Recorder({
+  maxSeconds,
+  send: upload,
+  title = "Record your explanation",
+  hint = "Press Record and describe your idea in your own words.",
+}: Props) {
   const { getToken } = useAuth();
   const [phase, setPhase] = useState<Phase>("idle");
   const [seconds, setSeconds] = useState(0);
@@ -157,10 +164,9 @@ export function Recorder({ projectId, maxSeconds, onTranscribed }: Props) {
         setPhase("recorded");
         return;
       }
-      const transcript = await uploadRecording(token, projectId, audio.blob);
+      await upload(token, audio.blob);
       // The recording has done its job: drop it from the browser too.
       discard();
-      onTranscribed(transcript);
     } catch (err: unknown) {
       setError(errorMessage(err));
       setPhase("recorded");
@@ -175,14 +181,14 @@ export function Recorder({ projectId, maxSeconds, onTranscribed }: Props) {
   return (
     <section className="flex flex-col gap-4 rounded-lg border border-neutral-300 p-4 dark:border-neutral-700">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold">Record your explanation</h2>
+        <h2 className="text-xl font-semibold">{title}</h2>
         <span className="font-mono text-sm" aria-label="Recording time">
           {formatTime(seconds)} / {formatTime(maxSeconds)}
         </span>
       </div>
 
       <p role="status" className="text-sm text-neutral-600 dark:text-neutral-300">
-        {phase === "idle" && "Press Record and describe your idea in your own words."}
+        {phase === "idle" && hint}
         {phase === "recording" && "Recording… speak naturally. You can pause at any time."}
         {phase === "paused" && "Paused."}
         {phase === "recorded" && "Listen back, then send it or record again."}

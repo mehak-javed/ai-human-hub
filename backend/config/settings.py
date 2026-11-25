@@ -119,7 +119,7 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": ["accounts.authentication.ClerkAuthentication"],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
     # Per-user limits for endpoints that spend our free AI quota.
-    "DEFAULT_THROTTLE_RATES": {"transcription": "30/hour", "stories": "10/hour"},
+    "DEFAULT_THROTTLE_RATES": {"transcription": "30/hour", "stories": "10/hour", "questions": "10/hour"},
 }
 
 # CORS: only the listed frontend origins may call the API from a browser.

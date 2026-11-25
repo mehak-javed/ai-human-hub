@@ -41,8 +41,9 @@ general-purpose models are OpenAI's open-weight gpt-oss models.
 - Invalid AI output can't reach the database or the client.
 - No single provider outage or limit stops clients (AI6). Every switch is
   logged without client content.
-- The provider choice and the prompt live in one module (`projects/stories.py`),
-  so models can be swapped with a one-line change.
+- Providers, retries and the fallback live in one module (`projects/llm.py`),
+  shared by stories and follow-up questions, so models can be swapped with a
+  one-line change.
 
 **Negative**
 

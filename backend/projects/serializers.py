@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Project, Transcript, UserStory
+from .models import FollowUpQuestion, Project, Transcript, UserStory
 
 
 class ProjectSerializer(serializers.ModelSerializer):
@@ -47,3 +47,23 @@ class UserStorySerializer(serializers.ModelSerializer):
         model = UserStory
         fields = ["id", "role", "goal", "reason", "acceptance_criteria", "priority", "provider", "created_at"]
         read_only_fields = fields
+
+
+class FollowUpQuestionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FollowUpQuestion
+        fields = ["id", "topic", "question", "status", "answer", "masked_answer", "answered_at"]
+        read_only_fields = fields
+
+
+class AnswerSerializer(serializers.Serializer):
+    """A typed answer, or "Not sure" (C5). Exactly one of the two."""
+
+    answer = serializers.CharField(required=False, allow_blank=True, max_length=2000)
+    not_sure = serializers.BooleanField(default=False)
+
+    def validate(self, data):
+        has_answer = bool(data.get("answer", "").strip())
+        if has_answer == data["not_sure"]:
+            raise serializers.ValidationError("Type an answer, or choose Not sure.")
+        return data
