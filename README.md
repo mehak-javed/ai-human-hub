@@ -1,84 +1,167 @@
 # AI Human Hub
 
 ![Backend CI](https://github.com/mehak-javed/ai-human-hub/actions/workflows/backend-ci.yml/badge.svg)
+![Frontend CI](https://github.com/mehak-javed/ai-human-hub/actions/workflows/frontend-ci.yml/badge.svg)
 
 **Live demo:** https://ai-human-hub.vercel.app · **API health:** https://ai-human-hub-api.onrender.com/api/health/
 _The API runs on a free instance that sleeps when idle; the first request can take up to a minute._
 
 Clients often struggle to explain what they want built, and developers lose days
-chasing missing details. AI Human Hub lets a client describe their project by
-voice. An AI interviewer asks follow-up questions to fill the gaps, then drafts
-user stories with acceptance criteria and priorities. Nothing reaches the
-development team until a human has approved it: first the client, then an admin.
-Approved stories are pushed to a private GitHub repository as issues.
+chasing missing details. **AI Human Hub** lets a client describe their project by
+voice. An AI interviewer finds the gaps and asks follow-up questions, then drafts
+user stories with acceptance criteria and priorities. **Nothing reaches the
+development team until people have approved it**: first the client, then our
+team. Approved stories land in a private GitHub repository as issues.
 
 ## How it works
 
-1. **Record**: the client explains their idea by voice in the browser.
-2. **Transcribe**: speech is converted to text; the audio is discarded immediately.
-3. **Mask**: names, emails, phone numbers and addresses are replaced with tags
-   such as `[NAME]` before any text is sent to an AI model.
-4. **Interview**: the AI checks the transcript for gaps (users, roles, data,
-   payments, login, deadlines) and asks up to 10 follow-up questions.
-5. **Draft**: the AI writes user stories as validated JSON, grouped into Must,
-   Should and Nice to have.
-6. **Client approval**: the client edits, approves or sends the stories back
-   with a note.
-7. **Admin approval**: an admin reviews, edits, merges or rejects stories.
-8. **Ship**: approved stories become GitHub issues, and a `requirements.md`
-   file is committed to the client's private repo.
+```mermaid
+flowchart LR
+    A[Client records<br/>their idea] --> B[Whisper<br/>speech to text]
+    B -->|audio dropped| C[Mask personal data<br/>NAME, EMAIL, PHONE, ADDRESS]
+    C --> D[AI finds gaps,<br/>asks up to 10 questions]
+    D --> E[AI writes stories<br/>as validated JSON]
+    E --> F{Client review}
+    F -->|edit, add, remove,<br/>or rewrite with a note| F
+    F -->|approve| G{Team review}
+    G -->|edit, merge, split,<br/>reject - all logged| G
+    G -->|Send to GitHub| H[Private repo:<br/>issues + requirements.md]
+```
 
-## Design principles
+1. **Record:** the client explains their idea in the browser. Audio is held in
+   memory only for transcription and never stored.
+2. **Mask:** names, emails, phone numbers and addresses become `[NAME]`,
+   `[EMAIL]`, `[PHONE]` and `[ADDRESS]` before any text reaches an AI model.
+   The client can see exactly what the AI will see.
+3. **Interview:** the AI checks the masked transcript against a checklist (users,
+   roles, features, data, payments, login, deadlines) and asks up to 10 questions,
+   one at a time. The client answers by voice, by text, or with "Not sure".
+4. **Draft:** the AI writes user stories ("As a…, I want to…, so that…") with
+   acceptance criteria and a Must / Should / Nice-to-have priority.
+5. **Client review:** the client edits, removes or adds stories, or asks the AI
+   to rewrite them with a note, then approves. Approved stories are locked.
+6. **Team review:** an admin edits, merges, splits or rejects stories. Every
+   change is recorded with who made it, when, and the wording before and after.
+7. **Send to GitHub:** each story becomes an issue with its acceptance criteria
+   as a checklist and a priority label, and `requirements.md` is committed.
 
-- **Human in the loop**: AI drafts, people decide. Nothing is pushed without
-  client and admin approval.
-- **Privacy by design**: audio is never stored; personal data is masked before
-  any AI call; clients can delete their project at any time.
-- **Least privilege**: every API request checks the user's role and project
-  ownership; only private GitHub repositories can be connected.
-- **Free-tier first**: runs within free tiers, with automatic fallback to a
-  second AI provider when limits are reached.
+## Responsible AI
+
+- **Human in the loop:** AI drafts; people decide. Two approvals stand between
+  the AI and the development team.
+- **AI output is never trusted blindly:** every answer is validated against a
+  strict schema (Pydantic). An invalid answer is retried once, then the backup
+  provider is used; bad output can never reach the database.
+- **Privacy by design:** audio is never stored, and the AI only ever receives
+  masked text, including the client's own edits and notes. Our team also sees
+  only the masked version.
+- **Prompt-injection guard:** client text is passed as data inside tags, the
+  prompt says to ignore instructions in it, and the output schema limits what
+  an injected instruction could produce.
+- **Resilience:** Cloudflare Workers AI is the primary model provider and Groq
+  the backup. Switches are logged without client content.
+
+## Security
+
+- Every API request is authenticated with a verified Clerk session token.
+- Clients only ever see their own projects; anything else returns 404, so a
+  project's existence is never revealed. Admin endpoints check a role stored in
+  our own database.
+- A one-way status workflow (`interviewing → awaiting client → awaiting admin →
+  sent to GitHub`) is enforced on the server: an action outside its stage gets
+  409 Conflict.
+- GitHub access uses a GitHub App, never a personal token. Each push gets a
+  token limited to one **private** repository and to issues and contents, and
+  it expires within an hour. Public repositories are refused.
+- Secrets live only in environment variables; CORS allows only our frontend;
+  HTTPS and HSTS are enforced; AI calls are rate-limited per user.
 
 ## Tech stack
 
 | Layer | Technology |
 |---|---|
-| Backend and API | Python, Django, Django REST Framework |
-| Admin dashboard | Django Admin with custom chart pages |
-| Frontend | Next.js (React, TypeScript) on Cloudflare Pages |
-| Database | PostgreSQL (Neon) |
+| Backend and API | Python 3.14, Django 5.2, Django REST Framework |
+| Frontend | Next.js 16, React 19, TypeScript, Tailwind CSS 4 |
+| Database | PostgreSQL 18 on Neon |
 | Authentication | Clerk |
-| Speech-to-text | Whisper via Cloudflare Workers AI |
-| LLM | Cloudflare Workers AI (Llama/Qwen), Groq as fallback |
-| Integration | GitHub App (issues, commits, project boards) |
-| Testing and CI | pytest, GitHub Actions |
+| Speech-to-text | Whisper large-v3-turbo on Cloudflare Workers AI, Groq as backup |
+| Language models | Llama 3.3 70B on Workers AI, gpt-oss-120b on Groq as backup |
+| GitHub integration | GitHub App (REST API: issues and contents) |
+| Hosting | Render (API), Vercel (frontend) |
+| Testing and CI | pytest (225 backend tests), ESLint, GitHub Actions with a Postgres service |
+
+## Engineering decisions
+
+Each significant decision is written up as an Architecture Decision Record:
+
+| ADR | Decision |
+|---|---|
+| [0001](docs/adr/0001-monorepo-and-stack.md) | Monorepo with Django + DRF and Next.js |
+| [0002](docs/adr/0002-postgres-on-neon.md) | PostgreSQL on Neon everywhere, including CI |
+| [0003](docs/adr/0003-authentication-with-clerk.md) | Authentication with Clerk |
+| [0004](docs/adr/0004-hosting-render-and-vercel.md) | Hosting on Render and Vercel |
+| [0005](docs/adr/0005-ai-story-generation.md) | Validated JSON and a backup AI provider |
+| [0006](docs/adr/0006-project-status-workflow.md) | A one-way status workflow |
+| [0007](docs/adr/0007-admin-review.md) | Admin review with least privilege and a change log |
+| [0008](docs/adr/0008-github-delivery.md) | GitHub delivery through an App, safe to retry |
+
+## Running it locally
+
+You need Python 3.14, Node.js 24, a Neon (or any PostgreSQL) database, a Clerk
+application, and at least one AI provider key (Cloudflare Workers AI or Groq).
+
+```bash
+git clone https://github.com/mehak-javed/ai-human-hub.git
+cd ai-human-hub/backend
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements-dev.txt
+cp .env.example .env          # then fill in the values
+python manage.py migrate
+python manage.py runserver
+```
+
+In a second terminal:
+
+```bash
+cd ai-human-hub/frontend
+npm install
+cp .env.example .env.local    # then fill in the values
+npm run dev
+```
+
+Open http://localhost:3000. To make yourself an admin after signing in once:
+
+```bash
+python manage.py set_role you@example.com admin
+```
+
+Run the tests with `pytest` in `backend/`, and `npm run lint` in `frontend/`.
+Sending to GitHub needs a GitHub App: see [docs/github-app-setup.md](docs/github-app-setup.md).
 
 ## Repository structure
 
-    backend/     Django + DRF API and admin
-    frontend/    Next.js client application
-    docs/        Use cases and Architecture Decision Records (ADRs)
+    backend/
+      accounts/     users, roles, Clerk authentication
+      projects/     interviews, masking, AI, reviews, GitHub delivery
+      tests/        pytest suite (no test calls a real AI, Clerk or GitHub)
+    frontend/       Next.js client and team pages
+    docs/           use cases, ADRs, GitHub App setup
 
 ## Roadmap
 
-- [ ] Project setup: Django + DRF, Postgres, Clerk, Next.js, CI
-- [ ] Voice recording and transcription
-- [ ] Personal-data masking with unit tests
-- [ ] AI story generation with JSON validation and provider fallback
-- [ ] Follow-up question loop
-- [ ] Client review and approval
-- [ ] Admin review and push to GitHub
-- [ ] Dashboards and charts
-- [ ] Data deletion, retention clean-up, export and backups
+- [x] Project setup: Django + DRF, Postgres, Clerk, Next.js, CI, deployment
+- [x] Voice recording and transcription with a backup provider
+- [x] Personal-data masking with unit tests
+- [x] AI story generation with JSON validation and provider fallback
+- [x] Follow-up questions answered by voice, text or "Not sure"
+- [x] Client review and approval
+- [x] Team review (edit, merge, split, reject) with a change log
+- [x] Send to GitHub: issues and requirements.md
+- [ ] Dashboards: AI usage against free limits, AI acceptance rate
+- [ ] Privacy extras: delete my data, retention clean-up, export, backups
+- [ ] Invite-only sign-up and a privacy notice page
 
-## Documentation
-
-- [Use cases](docs/use-cases.md)
-- [Architecture Decision Records](docs/adr/)
-
-## Status
-
-In development, MVP in progress.
+See [docs/use-cases.md](docs/use-cases.md) for the full specification.
 
 ## License
 
