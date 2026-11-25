@@ -2,9 +2,10 @@
 
 import { useCallback, useState } from "react";
 
+import { FollowUpQuestions } from "@/components/FollowUpQuestions";
 import { Recorder } from "@/components/Recorder";
 import { Stories } from "@/components/Stories";
-import { listTranscripts, type Project, type Transcript } from "@/lib/api";
+import { listTranscripts, type Project, type Transcript, uploadRecording } from "@/lib/api";
 import { useApi } from "@/lib/useApi";
 
 // N2: 15 minutes of audio per interview; one recording is at most 10 minutes.
@@ -37,9 +38,11 @@ export function Transcripts({ project }: { project: Project }) {
     <div className="flex flex-col gap-6">
       {canRecord ? (
         <Recorder
-          projectId={project.id}
           maxSeconds={Math.min(RECORDING_LIMIT_SECONDS, remainingSeconds)}
-          onTranscribed={(transcript) => setAdded((current) => [...current, transcript])}
+          send={async (token, audio) => {
+            const transcript = await uploadRecording(token, project.id, audio);
+            setAdded((current) => [...current, transcript]);
+          }}
         />
       ) : (
         project.status === "interviewing" && (
@@ -81,6 +84,8 @@ export function Transcripts({ project }: { project: Project }) {
           </ol>
         )}
       </section>
+
+      <FollowUpQuestions project={project} hasTranscripts={transcripts.length > 0} />
 
       <Stories project={project} hasTranscripts={transcripts.length > 0} />
     </div>

@@ -80,6 +80,28 @@ export type Transcript = {
   created_at: string;
 };
 
+export const QUESTION_TOPICS = {
+  users: "Who will use it",
+  roles: "Kinds of users",
+  features: "What it must do",
+  data: "Information it keeps",
+  payments: "Payments",
+  login: "Signing in",
+  deadlines: "Dates and deadlines",
+} as const;
+
+/** A question the AI asks to fill a gap in the client's explanation. */
+export type FollowUpQuestion = {
+  id: number;
+  topic: keyof typeof QUESTION_TOPICS;
+  question: string;
+  status: "open" | "answered" | "not_sure";
+  answer: string;
+  /** The answer with personal data replaced by tags; what the AI sees. */
+  masked_answer: string;
+  answered_at: string | null;
+};
+
 export const STORY_PRIORITIES = {
   must: "Must have",
   should: "Should have",
@@ -155,4 +177,46 @@ export function listStories(token: string, projectId: number, signal?: AbortSign
 
 export function writeStories(token: string, projectId: number): Promise<UserStory[]> {
   return request<UserStory[]>(`/api/projects/${projectId}/stories/`, { token, method: "POST" });
+}
+
+export function listQuestions(
+  token: string,
+  projectId: number,
+  signal?: AbortSignal,
+): Promise<FollowUpQuestion[]> {
+  return request<FollowUpQuestion[]>(`/api/projects/${projectId}/questions/`, { token, signal });
+}
+
+export function askQuestions(token: string, projectId: number): Promise<FollowUpQuestion[]> {
+  return request<FollowUpQuestion[]>(`/api/projects/${projectId}/questions/`, { token, method: "POST" });
+}
+
+/** Answer by text, or pass `null` for "Not sure". */
+export function answerQuestion(
+  token: string,
+  projectId: number,
+  questionId: number,
+  answer: string | null,
+): Promise<FollowUpQuestion> {
+  return request<FollowUpQuestion>(`/api/projects/${projectId}/questions/${questionId}/answer/`, {
+    token,
+    method: "POST",
+    body: JSON.stringify(answer === null ? { not_sure: true } : { answer }),
+  });
+}
+
+export function answerQuestionByVoice(
+  token: string,
+  projectId: number,
+  questionId: number,
+  audio: Blob,
+): Promise<FollowUpQuestion> {
+  const extension = audio.type.includes("mp4") ? "mp4" : audio.type.includes("ogg") ? "ogg" : "webm";
+  const form = new FormData();
+  form.append("audio", audio, `answer.${extension}`);
+  return request<FollowUpQuestion>(`/api/projects/${projectId}/questions/${questionId}/answer/`, {
+    token,
+    method: "POST",
+    body: form,
+  });
 }

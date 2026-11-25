@@ -1,12 +1,20 @@
 from django.contrib import admin
 
-from .models import Project, Transcript, UserStory
+from .models import FollowUpQuestion, Project, Transcript, UserStory
 
 
 class TranscriptInline(admin.TabularInline):
     model = Transcript
     extra = 0
     fields = ("created_at", "provider", "duration_seconds", "text", "masked_text")
+    readonly_fields = fields
+    can_delete = False
+
+
+class FollowUpQuestionInline(admin.TabularInline):
+    model = FollowUpQuestion
+    extra = 0
+    fields = ("topic", "question", "status", "answer", "masked_answer", "provider")
     readonly_fields = fields
     can_delete = False
 
@@ -26,4 +34,4 @@ class ProjectAdmin(admin.ModelAdmin):
     search_fields = ("name", "owner__email", "owner__clerk_id")
     # Consent is evidence of what the client agreed to; nobody should edit it.
     readonly_fields = ("consent_given_at", "consent_version", "created_at", "updated_at")
-    inlines = [TranscriptInline, UserStoryInline]
+    inlines = [TranscriptInline, FollowUpQuestionInline, UserStoryInline]
