@@ -15,6 +15,12 @@ class User(AbstractUser):
 
     clerk_id = models.CharField(max_length=64, unique=True, null=True, blank=True)
     role = models.CharField(max_length=16, choices=Role.choices, default=Role.CLIENT)
+    # When the name and email were copied from Clerk (see clerk_profile.py).
+    clerk_synced_at = models.DateTimeField(null=True, blank=True, editable=False)
+
+    @property
+    def display_name(self) -> str:
+        return self.get_full_name() or self.email or self.username
 
     def __str__(self) -> str:
         return self.email or self.username

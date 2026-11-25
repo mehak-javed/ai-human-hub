@@ -37,6 +37,9 @@ class Project(models.Model):
     consent_version = models.CharField(max_length=20)
     # When the client approved their stories (C9); they are locked from then on.
     approved_at = models.DateTimeField(null=True, blank=True)
+    # The client's private repository, as "owner/name" (A6).
+    github_repo = models.CharField(max_length=140, blank=True)
+    sent_to_github_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -88,6 +91,7 @@ class UserStory(models.Model):
     class Origin(models.TextChoices):
         AI = "ai", "Written by AI"
         CLIENT = "client", "Added by the client"
+        ADMIN = "admin", "Written by our team"
 
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="stories")
     role = models.CharField(max_length=80)
@@ -102,6 +106,8 @@ class UserStory(models.Model):
     origin = models.CharField(max_length=8, choices=Origin.choices, default=Origin.AI)
     # True once the client has changed an AI-written story (AI7).
     client_edited = models.BooleanField(default=False)
+    # The GitHub issue made from this story, so re-sending updates it (G5).
+    github_issue_number = models.PositiveIntegerField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -110,6 +116,48 @@ class UserStory(models.Model):
 
     def __str__(self) -> str:
         return f"As a {self.role}, I want {self.goal}"
+
+    def snapshot(self) -> dict:
+        """The story as plain data, kept in the change log."""
+        return {
+            "id": self.pk,
+            "role": self.role,
+            "goal": self.goal,
+            "reason": self.reason,
+            "acceptance_criteria": self.acceptance_criteria,
+            "priority": self.priority,
+        }
+
+
+class StoryChange(models.Model):
+    """One change our team made to a client-approved story (A4).
+
+    Records who made it, when, and the stories before and after, so every
+    change can be traced. Rows are never edited or deleted by the app.
+    """
+
+    class Action(models.TextChoices):
+        EDIT = "edit", "Edited"
+        REJECT = "reject", "Rejected"
+        MERGE = "merge", "Merged"
+        SPLIT = "split", "Split"
+
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="story_changes")
+    action = models.CharField(max_length=8, choices=Action.choices)
+    # Kept if the admin's account is later removed, so the record survives.
+    changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name="+"
+    )
+    before = models.JSONField(default=list)
+    after = models.JSONField(default=list)
+    note = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self) -> str:
+        return f"{self.get_action_display()} on {self.project} by {self.changed_by}"
 
 
 class FollowUpQuestion(models.Model):
@@ -146,3 +194,32 @@ class FollowUpQuestion(models.Model):
         # Always recomputed, so the masked copy can never fall out of step.
         self.masked_answer = mask_personal_data(self.answer)
         super().save(*args, **kwargs)
+
+
+class GitHubPush(models.Model):
+    """One attempt to send a project to GitHub (A5, G6), kept as a record."""
+
+    class Status(models.TextChoices):
+        RUNNING = "running", "Running"
+        SUCCEEDED = "succeeded", "Succeeded"
+        FAILED = "failed", "Failed"
+
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="github_pushes")
+    pushed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name="+"
+    )
+    repo = models.CharField(max_length=140)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.RUNNING)
+    issues_created = models.PositiveSmallIntegerField(default=0)
+    issues_updated = models.PositiveSmallIntegerField(default=0)
+    commit_url = models.URLField(blank=True)
+    # Shown to the admin when a push fails; never contains a token.
+    error = models.TextField(blank=True)
+    started_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-started_at", "-id"]
+
+    def __str__(self) -> str:
+        return f"Push of {self.project} to {self.repo}: {self.get_status_display()}"

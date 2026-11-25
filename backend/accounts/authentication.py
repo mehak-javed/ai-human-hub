@@ -10,6 +10,8 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from rest_framework import authentication, exceptions
 
+from .clerk_profile import sync_profile
+
 User = get_user_model()
 
 
@@ -61,4 +63,6 @@ class ClerkAuthentication(authentication.BaseAuthentication):
         )
         if not user.is_active:
             raise exceptions.AuthenticationFailed("This account is disabled.")
+        # Once per user: copy their name and email from Clerk (A3).
+        sync_profile(user)
         return user

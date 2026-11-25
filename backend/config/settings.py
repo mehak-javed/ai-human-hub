@@ -150,6 +150,14 @@ CLOUDFLARE_ACCOUNT_ID = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "").strip()
 CLOUDFLARE_AI_TOKEN = os.environ.get("CLOUDFLARE_AI_TOKEN", "").strip()
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
 
+# GitHub App that delivers approved stories to clients' private repos (A6, G1).
+# Optional, so tests and CI don't need it. The private key is the App's PEM
+# file, or the same file base64-encoded (easier to paste into a dashboard).
+
+GITHUB_APP_ID = os.environ.get("GITHUB_APP_ID", "").strip()
+GITHUB_APP_PRIVATE_KEY = os.environ.get("GITHUB_APP_PRIVATE_KEY", "").strip()
+GITHUB_APP_SLUG = os.environ.get("GITHUB_APP_SLUG", "").strip()
+
 # Logging: send warnings and errors (including unhandled exceptions with their
 # tracebacks) to the console, where Render's log viewer shows them. Without
 # this, Django only emails errors to ADMINS when DEBUG is off.

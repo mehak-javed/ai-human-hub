@@ -44,6 +44,8 @@ export type Me = {
   id: number;
   clerk_id: string;
   role: "client" | "admin";
+  email: string;
+  name: string;
 };
 
 export const PROJECT_TYPES = {
@@ -129,7 +131,7 @@ export type StoryInput = {
 export type UserStory = StoryInput & {
   id: number;
   provider: string;
-  origin: "ai" | "client";
+  origin: "ai" | "client" | "admin";
   client_edited: boolean;
   created_at: string;
 };
@@ -269,4 +271,133 @@ export function reviseStories(token: string, projectId: number, note: string): P
 
 export function approveStories(token: string, projectId: number): Promise<Project> {
   return request<Project>(`/api/projects/${projectId}/approve/`, { token, method: "POST" });
+}
+
+// --- Our team's review (admin role only) ------------------------------------
+
+export type AdminProject = {
+  id: number;
+  name: string;
+  project_type: ProjectType;
+  status: ProjectStatus;
+  client: { id: number; email: string; name: string };
+  story_count: number;
+  /** The connected private repository, as "owner/name", or "". */
+  github_repo: string;
+  approved_at: string | null;
+  sent_to_github_at: string | null;
+  created_at: string;
+};
+
+export type GitHubPush = {
+  id: number;
+  repo: string;
+  status: "running" | "succeeded" | "failed";
+  issues_created: number;
+  issues_updated: number;
+  commit_url: string;
+  error: string;
+  pushed_by: string;
+  started_at: string;
+  finished_at: string | null;
+};
+
+export type StoryChange = {
+  id: number;
+  action: "edit" | "reject" | "merge" | "split";
+  changed_by: string;
+  before: StoryInput[];
+  after: StoryInput[];
+  note: string;
+  created_at: string;
+};
+
+export type AdminProjectDetail = AdminProject & {
+  /** The client's words with personal data hidden; the team never sees the raw text. */
+  masked_transcripts: string[];
+  answers: { question: string; answer: string }[];
+  stories: UserStory[];
+  changes: StoryChange[];
+  pushes: GitHubPush[];
+  github: { configured: boolean; install_url: string };
+};
+
+export function listAdminProjects(
+  token: string,
+  filters: { status?: string; client?: string },
+  signal?: AbortSignal,
+): Promise<AdminProject[]> {
+  const query = new URLSearchParams(Object.entries(filters).filter(([, value]) => value) as [string, string][]);
+  return request<AdminProject[]>(`/api/admin/projects/?${query}`, { token, signal });
+}
+
+export function getAdminProject(token: string, id: string, signal?: AbortSignal): Promise<AdminProjectDetail> {
+  return request<AdminProjectDetail>(`/api/admin/projects/${encodeURIComponent(id)}/`, { token, signal });
+}
+
+export function adminEditStory(
+  token: string,
+  projectId: number,
+  storyId: number,
+  changes: Partial<StoryInput>,
+): Promise<UserStory> {
+  return request<UserStory>(`/api/admin/projects/${projectId}/stories/${storyId}/`, {
+    token,
+    method: "PATCH",
+    body: JSON.stringify(changes),
+  });
+}
+
+export function adminRejectStory(token: string, projectId: number, storyId: number, reason: string): Promise<void> {
+  return request<void>(`/api/admin/projects/${projectId}/stories/${storyId}/reject/`, {
+    token,
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function adminMergeStories(
+  token: string,
+  projectId: number,
+  storyIds: number[],
+  story: StoryInput,
+): Promise<UserStory> {
+  return request<UserStory>(`/api/admin/projects/${projectId}/stories/merge/`, {
+    token,
+    method: "POST",
+    body: JSON.stringify({ story_ids: storyIds, story }),
+  });
+}
+
+export function adminSplitStory(
+  token: string,
+  projectId: number,
+  storyId: number,
+  stories: StoryInput[],
+): Promise<UserStory[]> {
+  return request<UserStory[]>(`/api/admin/projects/${projectId}/stories/${storyId}/split/`, {
+    token,
+    method: "POST",
+    body: JSON.stringify({ stories }),
+  });
+}
+
+/** Link a project to a private repo; the API tests the connection first. */
+export function connectGitHubRepo(
+  token: string,
+  projectId: number,
+  repo: string,
+): Promise<{ repo: string; url: string }> {
+  return request(`/api/admin/projects/${projectId}/github/`, {
+    token,
+    method: "POST",
+    body: JSON.stringify({ repo }),
+  });
+}
+
+export type SendResult = { push: GitHubPush; status: ProjectStatus };
+
+/** Send the stories to GitHub. A failed push comes back as ApiError 502 with a SendResult body. */
+export function sendToGitHub(token: string, projectId: number): Promise<SendResult> {
+  return request<SendResult>(`/api/admin/projects/${projectId}/send/`, { token, method: "POST" });
 }

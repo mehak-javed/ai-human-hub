@@ -1,20 +1,27 @@
 "use client";
 
-import { useAuth } from "@clerk/nextjs";
-import { type FormEvent, useCallback, useState } from "react";
+import { useCallback, useState } from "react";
 
 import {
+  buttonClass,
+  EMPTY_STORY,
+  ErrorText,
+  inputClass,
+  primaryClass,
+  PRIORITY_ORDER,
+  StoryForm,
+  StoryText,
+  useAction,
+} from "@/components/story-ui";
+import {
   addStory,
-  ApiError,
   approveStories,
   editStory,
   listStories,
   type Project,
   removeStory,
   reviseStories,
-  type StoryInput,
   STORY_PRIORITIES,
-  type StoryPriority,
   type UserStory,
   writeStories,
 } from "@/lib/api";
@@ -26,66 +33,6 @@ type Props = {
   hasTranscripts: boolean;
   onProjectChange: (project: Project) => void;
 };
-
-const PRIORITY_ORDER: StoryPriority[] = ["must", "should", "nice"];
-
-const buttonClass =
-  "rounded-md border border-neutral-300 px-4 py-2 font-medium disabled:opacity-50 dark:border-neutral-700";
-const primaryClass =
-  "rounded-md bg-neutral-900 px-4 py-2 font-medium text-white disabled:opacity-50 dark:bg-white dark:text-neutral-900";
-const inputClass =
-  "rounded-md border border-neutral-300 p-2 text-base dark:border-neutral-700 dark:bg-neutral-950";
-
-/** "a patient", "an admin". */
-function withArticle(role: string): string {
-  return `${/^[aeiou]/i.test(role) ? "an" : "a"} ${role}`;
-}
-
-function errorMessage(error: unknown): string {
-  if (error instanceof ApiError) {
-    const body = error.body as Record<string, unknown> | null;
-    if (typeof body?.detail === "string") return body.detail;
-    if (error.status === 429) return "You've asked our AI a lot. Please wait a while and try again.";
-    if (error.status === 400 && body) return "Please check the highlighted story and try again.";
-    return `Something went wrong. Please try again (error ${error.status}).`;
-  }
-  return "Something went wrong. Please try again.";
-}
-
-/** Run an API call with a fresh token, tracking busy and error state. */
-function useAction() {
-  const { getToken } = useAuth();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function run(call: (token: string) => Promise<void>) {
-    setBusy(true);
-    setError(null);
-    try {
-      const token = await getToken();
-      if (!token) {
-        setError("Your session has expired. Please sign in again.");
-        return;
-      }
-      await call(token);
-    } catch (err: unknown) {
-      setError(errorMessage(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return { busy, error, run };
-}
-
-function ErrorText({ error }: { error: string | null }) {
-  if (!error) return null;
-  return (
-    <p role="alert" className="text-sm text-red-600">
-      {error}
-    </p>
-  );
-}
 
 export function Stories({ project, hasTranscripts, onProjectChange }: Props) {
   const load = useCallback(
@@ -259,15 +206,7 @@ function StoryCard({
 
   return (
     <li className="rounded-lg border border-neutral-300 p-4 dark:border-neutral-700">
-      <p>
-        As {withArticle(story.role)}, I want to <strong>{story.goal}</strong>, so that{" "}
-        {story.reason.replace(/\.$/, "")}.
-      </p>
-      <ul className="mt-2 list-disc pl-5 text-sm text-neutral-600 dark:text-neutral-300">
-        {story.acceptance_criteria.map((criterion, index) => (
-          <li key={index}>{criterion}</li>
-        ))}
-      </ul>
+      <StoryText story={story} />
       {(story.origin === "client" || story.client_edited) && (
         <p className="mt-2 text-xs text-neutral-500">
           {story.origin === "client" ? "Added by you" : "Changed by you"}
@@ -295,119 +234,6 @@ function StoryCard({
       )}
       <ErrorText error={editing ? null : error} />
     </li>
-  );
-}
-
-const EMPTY_STORY: StoryInput = {
-  role: "",
-  goal: "",
-  reason: "",
-  acceptance_criteria: [],
-  priority: "should",
-};
-
-function StoryForm({
-  initial,
-  submitLabel,
-  onSubmit,
-  onCancel,
-  busy,
-  error,
-}: {
-  initial: StoryInput;
-  submitLabel: string;
-  onSubmit: (story: StoryInput) => void;
-  onCancel: () => void;
-  busy: boolean;
-  error: string | null;
-}) {
-  const [role, setRole] = useState(initial.role);
-  const [goal, setGoal] = useState(initial.goal);
-  const [reason, setReason] = useState(initial.reason);
-  const [criteria, setCriteria] = useState(initial.acceptance_criteria.join("\n"));
-  const [priority, setPriority] = useState<StoryPriority>(initial.priority);
-
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    onSubmit({
-      role: role.trim(),
-      goal: goal.trim(),
-      reason: reason.trim(),
-      // One criterion per line; blank lines are ignored.
-      acceptance_criteria: criteria
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean),
-      priority,
-    });
-  }
-
-  return (
-    <form onSubmit={submit} className="flex flex-col gap-3 text-sm">
-      <label className="flex flex-col gap-1">
-        As a…
-        <input
-          value={role}
-          onChange={(e) => setRole(e.target.value)}
-          required
-          maxLength={80}
-          className={inputClass}
-        />
-      </label>
-      <label className="flex flex-col gap-1">
-        I want to…
-        <input
-          value={goal}
-          onChange={(e) => setGoal(e.target.value)}
-          required
-          maxLength={300}
-          className={inputClass}
-        />
-      </label>
-      <label className="flex flex-col gap-1">
-        So that…
-        <input
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          required
-          maxLength={300}
-          className={inputClass}
-        />
-      </label>
-      <label className="flex flex-col gap-1">
-        How we&apos;ll know it works (one per line)
-        <textarea
-          value={criteria}
-          onChange={(e) => setCriteria(e.target.value)}
-          required
-          rows={3}
-          className={inputClass}
-        />
-      </label>
-      <label className="flex flex-col gap-1">
-        Priority
-        <select
-          value={priority}
-          onChange={(e) => setPriority(e.target.value as StoryPriority)}
-          className={inputClass}
-        >
-          {PRIORITY_ORDER.map((value) => (
-            <option key={value} value={value}>
-              {STORY_PRIORITIES[value]}
-            </option>
-          ))}
-        </select>
-      </label>
-      <div className="flex flex-wrap gap-2">
-        <button type="submit" disabled={busy} className={primaryClass}>
-          {busy ? "Saving…" : submitLabel}
-        </button>
-        <button type="button" onClick={onCancel} disabled={busy} className={buttonClass}>
-          Cancel
-        </button>
-      </div>
-      <ErrorText error={error} />
-    </form>
   );
 }
 

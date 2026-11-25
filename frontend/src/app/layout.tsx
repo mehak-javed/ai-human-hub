@@ -3,6 +3,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 
+import { AdminLink } from "@/components/AdminLink";
+
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -31,6 +33,7 @@ export default function RootLayout({
                 </Show>
                 <Show when="signed-in">
                   <Link href="/dashboard">Dashboard</Link>
+                  <AdminLink />
                   <UserButton />
                 </Show>
               </Suspense>
