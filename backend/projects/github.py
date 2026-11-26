@@ -22,6 +22,7 @@ from dataclasses import dataclass
 
 import httpx
 import jwt
+from cryptography.hazmat.primitives import serialization
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
@@ -83,10 +84,17 @@ def private_key() -> str:
     if "-----BEGIN" not in value:
         try:
             # Ignore line breaks or spaces added when the value was pasted.
-            value = base64.b64decode("".join(value.split()), validate=True).decode()
-        except (binascii.Error, UnicodeDecodeError) as exc:
+            raw = base64.b64decode("".join(value.split()), validate=True)
+        except binascii.Error as exc:
             logger.warning("GitHub App key is not PEM and not valid base64 (%d characters).", len(value))
             raise GitHubError(KEY_UNREADABLE) from exc
+        if raw.startswith(b"-----BEGIN"):
+            # The whole .pem file, base64-encoded.
+            value = raw.decode("utf-8", errors="replace")
+        else:
+            # Only the key's body, without its BEGIN/END lines (seen live:
+            # the dashboard dropped them). That body is the key itself.
+            return pem_from_der(raw)
     found = PEM_BLOCK.search(value)
     if not found:
         logger.warning(
@@ -97,6 +105,17 @@ def private_key() -> str:
         )
         raise GitHubError(KEY_UNREADABLE)
     return found.group(0)
+
+
+def pem_from_der(raw: bytes) -> str:
+    try:
+        key = serialization.load_der_private_key(raw, password=None)
+    except (ValueError, TypeError) as exc:
+        logger.warning("GitHub App key body is not a private key (%d bytes).", len(raw))
+        raise GitHubError(KEY_UNREADABLE) from exc
+    return key.private_bytes(
+        serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()
+    ).decode()
 
 
 def app_jwt() -> str:
