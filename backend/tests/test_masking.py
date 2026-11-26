@@ -14,6 +14,10 @@ from projects.masking import mask_personal_data
         ("Email me at sam.lee+shop@gmail.com please.", "Email me at [EMAIL] please."),
         ("It's sam dot lee at gmail dot com.", "It's [EMAIL]."),
         ("Write to bookings at bakery dot co dot uk", "Write to [EMAIL]"),
+        # How speech-to-text really wrote one in a live interview.
+        ("you can get my email address which is samlee27 at the gmail.com in services", "you can get my email address which is [EMAIL] in services"),
+        ("It's sam.lee at gmail.com", "It's [EMAIL]"),
+        ("sam at gmail dot co dot uk", "[EMAIL]"),
     ],
 )
 def test_emails_are_masked(text, expected):
@@ -117,3 +121,10 @@ def test_realistic_transcript():
     )
     for secret in ("Aisha", "Patel", "Mill Lane", "LS1", "07911", "pawsome"):
         assert secret not in masked
+
+
+def test_at_the_is_only_an_email_for_mail_providers():
+    # "the" after "at" usually starts an ordinary phrase.
+    text = "We deliver at the weekend."
+    assert mask_personal_data(text) == text
+

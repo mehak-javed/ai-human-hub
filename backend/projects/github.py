@@ -14,6 +14,7 @@ instead of creating duplicates.
 """
 
 import base64
+import binascii
 import logging
 import re
 import time
@@ -37,6 +38,13 @@ REPO_PATTERN = re.compile(r"^[A-Za-z0-9-]{1,39}/[A-Za-z0-9._-]{1,100}$")
 REQUIREMENTS_PATH = "requirements.md"
 # The permissions we ask for in every installation token, and no more.
 TOKEN_PERMISSIONS = {"issues": "write", "contents": "write", "metadata": "read"}
+# People often paste the repo's web address instead of owner/name.
+REPO_URL_PREFIX = re.compile(r"^(?:https?://)?(?:www\.)?github\.com/", re.IGNORECASE)
+KEY_UNREADABLE = (
+    "The GitHub App's private key in the server settings can't be read. "
+    "Paste it again into GITHUB_APP_PRIVATE_KEY (the whole .pem file, or the "
+    "whole base64 line) and redeploy."
+)
 
 
 class GitHubError(Exception):
@@ -60,18 +68,39 @@ def install_url() -> str:
 
 
 def private_key() -> str:
-    """The App's PEM key. Hosting dashboards may store it base64-encoded."""
+    """The App's PEM key. Hosting dashboards may store it base64-encoded.
+
+    A key that can't be read is reported as a GitHubError with a message the
+    admin can act on, instead of a server error.
+    """
     key = settings.GITHUB_APP_PRIVATE_KEY.strip()
-    if key.startswith("-----BEGIN"):
-        return key.replace("\\n", "\n")
-    return base64.b64decode(key).decode()
+    if not key.startswith("-----BEGIN"):
+        try:
+            # Ignore line breaks or spaces added when the value was pasted.
+            key = base64.b64decode("".join(key.split()), validate=True).decode()
+        except (binascii.Error, UnicodeDecodeError) as exc:
+            raise GitHubError(KEY_UNREADABLE) from exc
+    key = key.replace("\\n", "\n")
+    if not key.startswith("-----BEGIN") or "PRIVATE KEY-----" not in key:
+        raise GitHubError(KEY_UNREADABLE)
+    return key
 
 
 def app_jwt() -> str:
     now = int(time.time())
     # Backdated a minute for clock drift; GitHub allows at most 10 minutes.
     payload = {"iat": now - 60, "exp": now + 9 * 60, "iss": str(settings.GITHUB_APP_ID)}
-    return jwt.encode(payload, private_key(), algorithm="RS256")
+    try:
+        return jwt.encode(payload, private_key(), algorithm="RS256")
+    except (ValueError, TypeError, jwt.PyJWTError) as exc:
+        # The text looked like a key but isn't a valid RSA private key.
+        raise GitHubError(KEY_UNREADABLE) from exc
+
+
+def normalise_repo(text: str) -> str:
+    """'https://github.com/acme/bakery.git/' -> 'acme/bakery'."""
+    name = REPO_URL_PREFIX.sub("", text.strip()).strip("/")
+    return name[:-4] if name.endswith(".git") else name
 
 
 def make_http_client() -> httpx.Client:
@@ -119,6 +148,7 @@ class GitHub:
 
     def connect(self, full_name: str) -> Repo:
         """Get an installation token for one repo and check it is private."""
+        full_name = normalise_repo(full_name)
         if not REPO_PATTERN.match(full_name):
             raise GitHubError("Enter the repository as owner/name, for example acme/bakery-website.")
         app_token = app_jwt()
