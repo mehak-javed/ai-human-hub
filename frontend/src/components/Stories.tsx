@@ -332,8 +332,8 @@ function ApproveStories({
       {confirming ? (
         <>
           <p>
-            Approve these {storyCount} stories? They&apos;ll be locked and sent to our team, and you
-            won&apos;t be able to change them.
+            Approve these {storyCount} stories and your data summary? They&apos;ll be locked and sent
+            to our team, and you won&apos;t be able to change them.
           </p>
           <div className="flex gap-2">
             <button

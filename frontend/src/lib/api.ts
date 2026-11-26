@@ -304,6 +304,47 @@ export function reviseStories(token: string, projectId: number, note: string): P
   });
 }
 
+/** AI5: one kind of thing the system keeps, e.g. "Order". */
+export type DataEntity = {
+  name: string;
+  description: string;
+  fields: { name: string; type: string; required: boolean; note: string }[];
+};
+
+export type DataModel = {
+  entities: DataEntity[];
+  relationships: { from_entity: string; to_entity: string; kind: string; description: string }[];
+  /** "Each Customer has many Order records." */
+  relationship_sentences: string[];
+  /** Field type → its label, e.g. "date_time" → "Date and time". */
+  field_types: Record<string, string>;
+  provider: string;
+  /** Set when the client approved; the summary is then locked. */
+  confirmed_at: string | null;
+  updated_at: string;
+};
+
+export function getDataModel(
+  token: string,
+  projectId: number,
+  signal?: AbortSignal,
+): Promise<{ data_model: DataModel | null }> {
+  return request(`/api/projects/${projectId}/data-model/`, { token, signal });
+}
+
+/** Have the AI write the data summary, or change it following `note`. */
+export function writeDataModel(
+  token: string,
+  projectId: number,
+  note = "",
+): Promise<{ data_model: DataModel }> {
+  return request(`/api/projects/${projectId}/data-model/`, {
+    token,
+    method: "POST",
+    body: JSON.stringify({ note }),
+  });
+}
+
 export function approveStories(token: string, projectId: number): Promise<Project> {
   return request<Project>(`/api/projects/${projectId}/approve/`, { token, method: "POST" });
 }
@@ -356,6 +397,7 @@ export type AdminProjectDetail = AdminProject & {
   pushes: GitHubPush[];
   github: { configured: boolean; install_url: string };
   progress: Progress | null;
+  data_model: DataModel | null;
 };
 
 export function listAdminProjects(

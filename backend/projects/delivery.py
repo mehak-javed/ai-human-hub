@@ -10,7 +10,8 @@ import re
 from django.utils import timezone
 
 from .github import REQUIREMENTS_PATH, GitHub, GitHubError, Repo, make_http_client
-from .models import FollowUpQuestion, GitHubPush, Project, UserStory
+from .data_model import FIELD_TYPES, describe_relationship
+from .models import DataModel, FollowUpQuestion, GitHubPush, Project, UserStory
 
 PRIORITY_LABELS = {
     UserStory.Priority.MUST: ("priority: must", "b60205"),
@@ -100,15 +101,44 @@ def requirements_markdown(project: Project, stories: list[UserStory], repo: Repo
             lines += [f"- [ ] {criterion}" for criterion in story.acceptance_criteria]
             lines.append("")
 
-    # Data model (G2): what the client said about the information the system keeps.
+    lines += data_model_markdown(project)
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def cell(text: str) -> str:
+    """Safe inside a Markdown table cell."""
+    return " ".join(str(text).split()).replace("|", "\\|")
+
+
+def data_model_markdown(project: Project) -> list[str]:
+    """G2, AI5: the confirmed data summary, then what the client said about data."""
+    lines = ["## Data model", ""]
+    data_model = DataModel.objects.filter(project=project).first()
+    if data_model and data_model.entities:
+        if data_model.confirmed_at:
+            lines += [f"Confirmed by the client on {timezone.localtime(data_model.confirmed_at):%-d %B %Y}.", ""]
+        for entity in data_model.entities:
+            lines += [f"### {entity['name']}", "", entity["description"], ""]
+            lines += ["| Field | Type | Required | Notes |", "|---|---|---|---|"]
+            for field in entity["fields"]:
+                lines.append(
+                    f"| {cell(field['name'])} | {FIELD_TYPES.get(field['type'], field['type'])} | "
+                    f"{'Yes' if field['required'] else 'No'} | {cell(field.get('note', ''))} |"
+                )
+            lines.append("")
+        if data_model.relationships:
+            lines += ["### How they connect", ""]
+            lines += [f"- {describe_relationship(rel)}" for rel in data_model.relationships]
+            lines.append("")
+
     data_answers = project.questions.filter(topic="data", status=FollowUpQuestion.Status.ANSWERED)
-    lines += ["## Information the system keeps", ""]
     if data_answers:
+        lines += ["### What the client said about their data", ""]
         for qa in data_answers:
             lines += [f"**{qa.question}**", "", qa.masked_answer, ""]
-    else:
+    if len(lines) == 2:
         lines += ["Not discussed in the interview yet.", ""]
-    return "\n".join(lines).rstrip() + "\n"
+    return lines
 
 
 def send_to_github(project: Project, user) -> GitHubPush:

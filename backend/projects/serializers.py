@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
-from .models import FollowUpQuestion, Project, Transcript, UserStory
+from .data_model import FIELD_TYPES, describe_relationship
+from .models import DataModel, FollowUpQuestion, Project, Transcript, UserStory
 from .progress import progress
 
 
@@ -108,3 +109,34 @@ class AnswerSerializer(serializers.Serializer):
         if has_answer == data["not_sure"]:
             raise serializers.ValidationError("Type an answer, or choose Not sure.")
         return data
+
+class DataModelSerializer(serializers.ModelSerializer):
+    """The data summary (AI5), with field types and relationships in words."""
+
+    field_types = serializers.SerializerMethodField()
+    relationship_sentences = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DataModel
+        fields = [
+            "entities",
+            "relationships",
+            "relationship_sentences",
+            "field_types",
+            "provider",
+            "confirmed_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+    def get_field_types(self, data_model) -> dict[str, str]:
+        return FIELD_TYPES
+
+    def get_relationship_sentences(self, data_model) -> list[str]:
+        return [describe_relationship(rel) for rel in data_model.relationships]
+
+
+class DataModelRequestSerializer(serializers.Serializer):
+    """Optional: what the client wants changed in the summary (C6)."""
+
+    note = serializers.CharField(max_length=1000, required=False, allow_blank=True)

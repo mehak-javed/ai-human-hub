@@ -136,6 +136,30 @@ class UserStory(models.Model):
         }
 
 
+class DataModel(models.Model):
+    """The information the system must keep, as the AI understood it (AI5).
+
+    Written from the masked interview; the client can ask for changes while
+    reviewing and confirms it by approving (C6, C9).
+    """
+
+    project = models.OneToOneField(Project, on_delete=models.CASCADE, related_name="data_model")
+    # [{"name", "description", "fields": [{"name", "type", "required", "note"}]}]
+    entities = models.JSONField(default=list)
+    # [{"from_entity", "to_entity", "kind", "description"}]
+    relationships = models.JSONField(default=list)
+    provider = models.CharField(max_length=20, blank=True)
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return f"Data model for {self.project}"
+
+    def for_ai(self) -> dict:
+        return {"entities": self.entities, "relationships": self.relationships}
+
+
 class StoryChange(models.Model):
     """One change our team made to a client-approved story (A4).
 

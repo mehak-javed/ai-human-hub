@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 
+import { DataModel } from "@/components/DataModel";
 import { FollowUpQuestions } from "@/components/FollowUpQuestions";
 import { Recorder } from "@/components/Recorder";
 import { Stories } from "@/components/Stories";
@@ -97,6 +98,8 @@ export function Transcripts({ project, onProjectChange }: Props) {
         hasTranscripts={transcripts.length > 0}
         onProjectChange={onProjectChange}
       />
+
+      <DataModel project={project} />
     </div>
   );
 }

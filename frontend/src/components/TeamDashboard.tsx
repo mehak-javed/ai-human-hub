@@ -28,6 +28,7 @@ const FEATURES: Record<string, string> = {
   transcription: "Transcription",
   follow_up_questions: "Follow-up questions",
   user_stories: "User stories",
+  data_model: "Data model",
 };
 
 function percent(share: number | null): string {
