@@ -158,6 +158,13 @@ GITHUB_APP_ID = os.environ.get("GITHUB_APP_ID", "").strip()
 GITHUB_APP_PRIVATE_KEY = os.environ.get("GITHUB_APP_PRIVATE_KEY", "").strip()
 GITHUB_APP_SLUG = os.environ.get("GITHUB_APP_SLUG", "").strip()
 
+# Free daily AI limits shown on the dashboard (A7, N1). Groq reports its own
+# limits in response headers, so only Workers AI's is set here.
+
+WORKERS_AI_DAILY_NEURONS = int(os.environ.get("WORKERS_AI_DAILY_NEURONS", "10000"))
+# Warn on the dashboard once this share of a daily limit is used.
+AI_USAGE_WARNING_SHARE = 0.8
+
 # How long a project is kept after it is sent to GitHub, or after it was last
 # changed if it never got that far (P3). Deleted daily by
 # `python manage.py delete_expired_projects`.

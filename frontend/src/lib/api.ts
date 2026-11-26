@@ -424,3 +424,41 @@ export type SendResult = { push: GitHubPush; status: ProjectStatus };
 export function sendToGitHub(token: string, projectId: number): Promise<SendResult> {
   return request<SendResult>(`/api/admin/projects/${projectId}/send/`, { token, method: "POST" });
 }
+
+// --- The team's dashboard (A2, A7, A9, AI7) ---------------------------------
+
+export type Dashboard = {
+  overview: {
+    active_clients: number;
+    interviews_this_week: number;
+    stories_created: number;
+    issues_pushed: number;
+  };
+  interviews_by_week: { week: string; count: number }[];
+  stories_by_priority: { priority: StoryPriority; count: number }[];
+  projects_by_client: { client: string; total: number; by_status: Record<ProjectStatus, number> }[];
+  ai_quality: {
+    ai_stories: number;
+    accepted_unchanged: number;
+    edited_by_client: number;
+    edited_by_team: number;
+    removed_by_team: number;
+    acceptance_rate: number | null;
+  };
+  ai_usage: {
+    workers_ai_daily_neurons: number;
+    warning_share: number;
+    days: { day: string; workers_ai_neurons: number; groq_calls: number }[];
+    groq_today: {
+      feature: string;
+      calls: number;
+      request_limit: number | null;
+      requests_remaining: number | null;
+    }[];
+    warnings: string[];
+  };
+};
+
+export function getDashboard(token: string, signal?: AbortSignal): Promise<Dashboard> {
+  return request<Dashboard>("/api/admin/dashboard/", { token, signal });
+}

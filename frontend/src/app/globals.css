@@ -24,3 +24,39 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Chart colours for the team dashboard, by role (validated for colour-blind
+   readers in both modes; see components/charts.tsx). */
+.viz-root {
+  --viz-surface: #fcfcfb;
+  --viz-text: #0b0b0b;
+  --viz-text-2: #52514e;
+  --viz-muted: #898781;
+  --viz-grid: #e1e0d9;
+  --viz-axis: #c3c2b7;
+  --viz-series-1: #2a78d6;
+  --viz-series-2: #eb6834;
+  --viz-series-3: #1baf7a;
+  --viz-series-4: #eda100;
+  --viz-track: #cde2fb;
+  --viz-warning: #fab219;
+  --viz-critical: #d03b3b;
+}
+
+@media (prefers-color-scheme: dark) {
+  .viz-root {
+    --viz-surface: #1a1a19;
+    --viz-text: #f0efec;
+    --viz-text-2: #c3c2b7;
+    --viz-muted: #898781;
+    --viz-grid: #2c2c2a;
+    --viz-axis: #383835;
+    --viz-series-1: #3987e5;
+    --viz-series-2: #d95926;
+    --viz-series-3: #199e70;
+    --viz-series-4: #c98500;
+    --viz-track: #184f95;
+    --viz-warning: #fab219;
+    --viz-critical: #d03b3b;
+  }
+}

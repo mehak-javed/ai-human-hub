@@ -16,6 +16,8 @@ from dataclasses import dataclass
 import httpx
 from django.conf import settings
 
+from .usage import record_ai_call
+
 logger = logging.getLogger(__name__)
 
 WHISPER_MODEL = "whisper-large-v3-turbo"
@@ -58,6 +60,7 @@ def transcribe_with_workers_ai(audio: bytes, content_type: str) -> Transcription
     response.raise_for_status()
     body = response.json()
     result = body.get("result", body)
+    record_ai_call("workers_ai", "transcription", neurons=(result.get("usage") or {}).get("neurons"))
     info = result.get("transcription_info") or {}
     return Transcription(
         text=result["text"].strip(),
@@ -76,6 +79,7 @@ def transcribe_with_groq(audio: bytes, content_type: str) -> Transcription:
         timeout=PROVIDER_TIMEOUT_SECONDS,
     )
     response.raise_for_status()
+    record_ai_call("groq", "transcription", headers=response.headers)
     body = response.json()
     return Transcription(
         text=body["text"].strip(),
