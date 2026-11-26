@@ -110,6 +110,7 @@ Each significant decision is written up as an Architecture Decision Record:
 | [0006](docs/adr/0006-project-status-workflow.md) | A one-way status workflow |
 | [0007](docs/adr/0007-admin-review.md) | Admin review with least privilege and a change log |
 | [0008](docs/adr/0008-github-delivery.md) | GitHub delivery through an App, safe to retry |
+| [0009](docs/adr/0009-progress-from-github.md) | Progress from GitHub issues: signed webhook plus a catch-up read |
 
 ## Running it locally
 
@@ -165,6 +166,7 @@ Sending to GitHub needs a GitHub App: see [docs/github-app-setup.md](docs/github
 - [x] Send to GitHub: issues and requirements.md
 - [x] Team dashboard: overview, AI usage against the free limits (warns at 80%), AI acceptance rate, activity charts
 - [x] Privacy: delete my project, Markdown export, 12-month retention clean-up, privacy notice
+- [x] Progress: closed GitHub issues show as built for the client and the team (signed webhook + catch-up sync)
 - [ ] Weekly database backups and invite-only sign-up
 
 See [docs/use-cases.md](docs/use-cases.md) for the full specification.

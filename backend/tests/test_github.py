@@ -52,6 +52,7 @@ class FakeGitHub:
         self.private = True
         self.labels: set[str] = set()
         self.issues: dict[int, dict] = {}
+        self.closed: set[int] = set()
         self.files: dict[str, dict] = {}
         self.token_requests: list[dict] = []
         # Status codes to return for the next matching calls: {(method, path regex): [codes]}
@@ -93,6 +94,14 @@ class FakeGitHub:
                 return httpx.Response(422, json={"message": "Validation Failed"})
             self.labels.add(body["name"])
             return httpx.Response(201, json=body)
+        if method == "GET" and path.endswith("/issues"):
+            params = request.url.params
+            assert params["state"] == "closed"
+            assert params["labels"] == "from: ai-human-hub"
+            items = [{"number": n, "state": "closed"} for n in sorted(self.closed) if n in self.issues]
+            # A pull request also appears in this list; it must be ignored.
+            items.append({"number": 999, "state": "closed", "pull_request": {}})
+            return httpx.Response(200, json=items)
         if method == "POST" and path.endswith("/issues"):
             number = len(self.issues) + 1
             self.issues[number] = body

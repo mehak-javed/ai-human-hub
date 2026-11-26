@@ -1,12 +1,15 @@
 from rest_framework import serializers
 
 from .models import FollowUpQuestion, Project, Transcript, UserStory
+from .progress import progress
 
 
 class ProjectSerializer(serializers.ModelSerializer):
     # Not stored as-is: the view records *when* consent was given and which
     # version of the notice was shown.
     consent = serializers.BooleanField(write_only=True)
+    # C10: features done versus total, once the project is on GitHub.
+    progress = serializers.SerializerMethodField()
 
     class Meta:
         model = Project
@@ -19,10 +22,14 @@ class ProjectSerializer(serializers.ModelSerializer):
             "consent_given_at",
             "consent_version",
             "approved_at",
+            "progress",
             "created_at",
         ]
         # The client can never set these, even by sending them in the request.
         read_only_fields = ["status", "consent_given_at", "consent_version", "approved_at", "created_at"]
+
+    def get_progress(self, project) -> dict | None:
+        return progress(project)
 
     def validate_consent(self, value: bool) -> bool:
         if value is not True:
@@ -56,6 +63,8 @@ class UserStorySerializer(serializers.ModelSerializer):
             "provider",
             "origin",
             "client_edited",
+            "github_issue_number",
+            "github_issue_closed",
             "created_at",
         ]
         read_only_fields = fields

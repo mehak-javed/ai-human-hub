@@ -74,9 +74,14 @@ export function Stories({ project, hasTranscripts, onProjectChange }: Props) {
           right, add what&apos;s missing, then approve them.
         </p>
       )}
-      {(project.status === "awaiting_admin" || project.status === "sent_to_github") && (
+      {project.status === "awaiting_admin" && (
         <p className="text-sm text-neutral-600 dark:text-neutral-300">
           You approved these stories. Our team is reviewing them now.
+        </p>
+      )}
+      {project.status === "sent_to_github" && (
+        <p className="text-sm text-neutral-600 dark:text-neutral-300">
+          Our team has started building these. Each one is marked as built when it&apos;s done.
         </p>
       )}
 

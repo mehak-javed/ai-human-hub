@@ -42,3 +42,5 @@ services:
         sync: false
       - key: GITHUB_APP_SLUG
         sync: false
+      - key: GITHUB_WEBHOOK_SECRET
+        sync: false

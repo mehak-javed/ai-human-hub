@@ -3,6 +3,7 @@ from rest_framework.routers import SimpleRouter
 
 from .admin_api import AdminProjectViewSet, dashboard_view
 from .views import ProjectViewSet
+from .webhooks import github_webhook
 
 router = SimpleRouter()
 router.register("projects", ProjectViewSet, basename="project")
@@ -11,5 +12,6 @@ router.register("admin/projects", AdminProjectViewSet, basename="admin-project")
 
 urlpatterns = [
     path("admin/dashboard/", dashboard_view, name="admin-dashboard"),
+    path("github/webhook/", github_webhook, name="github-webhook"),
     *router.urls,
 ]

@@ -40,6 +40,9 @@ class Project(models.Model):
     # The client's private repository, as "owner/name" (A6).
     github_repo = models.CharField(max_length=140, blank=True)
     sent_to_github_at = models.DateTimeField(null=True, blank=True)
+    # When issue states were last read from GitHub (G4); webhooks keep them
+    # current in between.
+    github_synced_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -108,6 +111,8 @@ class UserStory(models.Model):
     client_edited = models.BooleanField(default=False)
     # The GitHub issue made from this story, so re-sending updates it (G5).
     github_issue_number = models.PositiveIntegerField(null=True, blank=True)
+    # True while the story's GitHub issue is closed: the feature is done (C10).
+    github_issue_closed = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

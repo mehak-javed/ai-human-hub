@@ -9,6 +9,7 @@ import {
   fromDraft,
   inputClass,
   PRIORITY_ORDER,
+  ProgressBar,
   StoryFields,
   StoryForm,
   StoryText,
@@ -155,6 +156,8 @@ export function AdminProjectReview({ id }: { id: string }) {
           ))}
         </ol>
       </section>
+
+      {project.progress && <ProgressBar progress={project.progress} />}
 
       <GitHubDelivery project={project} onChanged={changed} />
 

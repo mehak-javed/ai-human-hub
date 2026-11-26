@@ -67,6 +67,14 @@ export const PROJECT_STATUSES = {
 
 export type ProjectStatus = keyof typeof PROJECT_STATUSES;
 
+/** C10: features done (GitHub issue closed) versus total, once sent to GitHub. */
+export type Progress = {
+  done: number;
+  total: number;
+  /** When issue states were last read from GitHub; webhooks update them in between. */
+  synced_at: string | null;
+};
+
 export type Project = {
   id: number;
   name: string;
@@ -75,6 +83,7 @@ export type Project = {
   consent_given_at: string;
   consent_version: string;
   approved_at: string | null;
+  progress: Progress | null;
   created_at: string;
 };
 
@@ -133,6 +142,9 @@ export type UserStory = StoryInput & {
   provider: string;
   origin: "ai" | "client" | "admin";
   client_edited: boolean;
+  github_issue_number: number | null;
+  /** The story's GitHub issue is closed: this feature is built. */
+  github_issue_closed: boolean;
   created_at: string;
 };
 
@@ -343,6 +355,7 @@ export type AdminProjectDetail = AdminProject & {
   changes: StoryChange[];
   pushes: GitHubPush[];
   github: { configured: boolean; install_url: string };
+  progress: Progress | null;
 };
 
 export function listAdminProjects(

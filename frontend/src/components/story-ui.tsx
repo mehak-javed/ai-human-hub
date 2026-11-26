@@ -3,7 +3,14 @@
 import { useAuth } from "@clerk/nextjs";
 import { type FormEvent, useState } from "react";
 
-import { ApiError, type StoryInput, STORY_PRIORITIES, type StoryPriority, type UserStory } from "@/lib/api";
+import {
+  ApiError,
+  type Progress,
+  type StoryInput,
+  STORY_PRIORITIES,
+  type StoryPriority,
+  type UserStory,
+} from "@/lib/api";
 
 // Shared by the client's review (Stories) and our team's review (AdminProjectReview).
 
@@ -77,6 +84,11 @@ export function ErrorText({ error }: { error: string | null }) {
 export function StoryText({ story }: { story: UserStory }) {
   return (
     <>
+      {story.github_issue_closed && (
+        <p className="mb-1 inline-block rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-900 dark:bg-green-950 dark:text-green-200">
+          ✓ Built{story.github_issue_number ? ` (issue #${story.github_issue_number} closed)` : ""}
+        </p>
+      )}
       <p>
         As {withArticle(story.role)}, I want to <strong>{story.goal}</strong>, so that{" "}
         {story.reason.replace(/\.$/, "")}.
@@ -254,5 +266,46 @@ export function StoryForm({
       <StoryFields value={draft} onChange={setDraft} />
       <FormButtons submitLabel={submitLabel} onCancel={onCancel} busy={busy} error={error} />
     </form>
+  );
+}
+
+const timeFormat = new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short" });
+
+/** C10: how much is built, from closed GitHub issues. */
+export function ProgressBar({ progress }: { progress: Progress }) {
+  const { done, total } = progress;
+  const percent = total ? Math.round((done / total) * 100) : 0;
+  return (
+    <section
+      aria-labelledby="progress-heading"
+      className="viz-root flex flex-col gap-2 rounded-lg border p-4"
+      style={{ background: "var(--viz-surface)", borderColor: "var(--viz-grid)", color: "var(--viz-text)" }}
+    >
+      <h2 id="progress-heading" className="font-semibold">
+        Progress
+      </h2>
+      <p className="text-2xl font-semibold tabular-nums">
+        {done} of {total} features built <span className="text-base font-normal">({percent}%)</span>
+      </p>
+      <div
+        role="progressbar"
+        aria-label="Features built"
+        aria-valuemin={0}
+        aria-valuemax={total}
+        aria-valuenow={done}
+        aria-valuetext={`${done} of ${total} features built`}
+        className="h-3 w-full overflow-hidden rounded"
+        style={{ background: "var(--viz-grid)" }}
+      >
+        <div
+          className="h-full rounded"
+          style={{ width: `${percent}%`, minWidth: done ? 4 : 0, background: "var(--viz-series-1)" }}
+        />
+      </div>
+      <p className="text-xs" style={{ color: "var(--viz-muted)" }}>
+        A feature counts as built when its GitHub issue is closed.
+        {progress.synced_at && ` Checked with GitHub ${timeFormat.format(new Date(progress.synced_at))}.`}
+      </p>
+    </section>
   );
 }

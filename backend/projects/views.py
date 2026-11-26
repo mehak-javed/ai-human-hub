@@ -14,6 +14,7 @@ from rest_framework.throttling import ScopedRateThrottle
 from .delivery import requirements_markdown
 from .masking import mask_personal_data
 from .models import CONSENT_VERSION, DeletionRecord, FollowUpQuestion, Project, UserStory
+from .progress import refresh_if_stale
 from .questions import QuestionGenerationError, generate_questions
 from .retention import delete_project
 from .serializers import (
@@ -157,6 +158,11 @@ class ProjectViewSet(
             self.throttle_scope = scope
             return [ScopedRateThrottle()]
         return super().get_throttles()
+
+    def retrieve(self, request, *args, **kwargs):
+        # G4: a delivered project's progress is at most a minute old when viewed.
+        refresh_if_stale(self.get_object())
+        return super().retrieve(request, *args, **kwargs)
 
     def perform_destroy(self, project):
         # C11: everything is removed at once, and only IDs and counts are kept.
@@ -316,6 +322,7 @@ class ProjectViewSet(
         the AI write them; the project then waits for the client's review."""
         project = self.get_object()
         if request.method == "GET":
+            refresh_if_stale(project)
             return Response(UserStorySerializer(project.stories.all(), many=True).data)
         return self.write_stories(project)
 
