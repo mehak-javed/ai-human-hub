@@ -205,6 +205,14 @@ def test_text_pasted_around_the_key_is_ignored(app_settings, key_pair):
     assert jwt.decode(github.app_jwt(), key_pair[1], algorithms=["RS256"])["iss"] == "12345"
 
 
+def test_a_key_without_its_begin_and_end_lines_works(app_settings, key_pair):
+    # Seen live: the dashboard kept only the lines between BEGIN and END.
+    body = "\n".join(line for line in key_pair[0].splitlines() if not line.startswith("-----"))
+    app_settings.GITHUB_APP_PRIVATE_KEY = body
+
+    assert jwt.decode(github.app_jwt(), key_pair[1], algorithms=["RS256"])["iss"] == "12345"
+
+
 def test_a_key_with_literal_backslash_n_works(app_settings, key_pair):
     app_settings.GITHUB_APP_PRIVATE_KEY = key_pair[0].replace("\n", "\\n")
 
