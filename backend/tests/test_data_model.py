@@ -148,6 +148,29 @@ def test_invalid_models_are_rejected(answer):
         parse_answer(answer if isinstance(answer, str) else json.dumps(answer))
 
 
+def test_code_style_names_become_plain_words():
+    # Seen with a real model: names written like code.
+    answer = {
+        "entities": [
+            {"name": "MenuItem", "description": "A cake on the menu.", "fields": [
+                {"name": "price", "type": "money", "required": True, "note": ""}]},
+            {"name": "Order", "description": "One order.", "fields": [
+                {"name": "collection_time", "type": "date_time", "required": True, "note": ""},
+                {"name": "menu_item", "type": "link", "required": True, "note": ""},
+                {"name": "website", "type": "link", "required": False, "note": ""}]},
+        ],
+        "relationships": [{"from_entity": "menu_item", "to_entity": "Order", "kind": "one_to_many", "description": ""}],
+    }
+
+    model = parse_answer(json.dumps(answer))
+
+    assert [e.name for e in model.entities] == ["Menu item", "Order"]
+    # The relationship still matches the tidied name.
+    assert model.relationships[0].from_entity == "Menu item"
+    # "menu item" only pointed at another entity; a real web link stays.
+    assert [f.name for f in model.entities[1].fields] == ["collection time", "website"]
+
+
 def test_the_prompt_keeps_client_text_inside_tags():
     messages = data_model.build_messages(
         ["We sell cakes."], [("What do you keep?", "Orders")], [{"goal": "order a cake"}], BAKERY, "Add allergies"
