@@ -198,6 +198,19 @@ def test_an_unreadable_key_is_a_clear_error(app_settings, value):
         github.app_jwt()
 
 
+def test_text_pasted_around_the_key_is_ignored(app_settings, key_pair):
+    # Seen live: a new key pasted after the old, broken value instead of over it.
+    app_settings.GITHUB_APP_PRIVATE_KEY = 'LS0tLS1CRUdJTiBSU0Eg"\n' + key_pair[0] + "\nleftover"
+
+    assert jwt.decode(github.app_jwt(), key_pair[1], algorithms=["RS256"])["iss"] == "12345"
+
+
+def test_a_key_with_literal_backslash_n_works(app_settings, key_pair):
+    app_settings.GITHUB_APP_PRIVATE_KEY = key_pair[0].replace("\n", "\\n")
+
+    assert jwt.decode(github.app_jwt(), key_pair[1], algorithms=["RS256"])["iss"] == "12345"
+
+
 def test_a_key_pasted_with_line_breaks_still_works(app_settings, key_pair):
     encoded = base64.b64encode(key_pair[0].encode()).decode()
     app_settings.GITHUB_APP_PRIVATE_KEY = "\n".join(encoded[i : i + 64] for i in range(0, len(encoded), 64))
