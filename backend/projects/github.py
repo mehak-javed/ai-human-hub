@@ -67,23 +67,36 @@ def install_url() -> str:
     return f"https://github.com/apps/{slug}/installations/new" if slug else ""
 
 
+PEM_BLOCK = re.compile(
+    r"-----BEGIN (?:RSA )?PRIVATE KEY-----.+?-----END (?:RSA )?PRIVATE KEY-----", re.DOTALL
+)
+
+
 def private_key() -> str:
     """The App's PEM key. Hosting dashboards may store it base64-encoded.
 
-    A key that can't be read is reported as a GitHubError with a message the
-    admin can act on, instead of a server error.
+    The PEM block is found wherever it is in the value, so stray text pasted
+    around it doesn't matter. A key that can't be read is reported as a
+    GitHubError with a message the admin can act on, instead of a server error.
     """
-    key = settings.GITHUB_APP_PRIVATE_KEY.strip()
-    if not key.startswith("-----BEGIN"):
+    value = settings.GITHUB_APP_PRIVATE_KEY.strip().replace("\\n", "\n")
+    if "-----BEGIN" not in value:
         try:
             # Ignore line breaks or spaces added when the value was pasted.
-            key = base64.b64decode("".join(key.split()), validate=True).decode()
+            value = base64.b64decode("".join(value.split()), validate=True).decode()
         except (binascii.Error, UnicodeDecodeError) as exc:
+            logger.warning("GitHub App key is not PEM and not valid base64 (%d characters).", len(value))
             raise GitHubError(KEY_UNREADABLE) from exc
-    key = key.replace("\\n", "\n")
-    if not key.startswith("-----BEGIN") or "PRIVATE KEY-----" not in key:
+    found = PEM_BLOCK.search(value)
+    if not found:
+        logger.warning(
+            "GitHub App key has no complete PEM private key block (%d characters, %d BEGIN, %d END).",
+            len(value),
+            value.count("-----BEGIN"),
+            value.count("-----END"),
+        )
         raise GitHubError(KEY_UNREADABLE)
-    return key
+    return found.group(0)
 
 
 def app_jwt() -> str:
@@ -94,6 +107,7 @@ def app_jwt() -> str:
         return jwt.encode(payload, private_key(), algorithm="RS256")
     except (ValueError, TypeError, jwt.PyJWTError) as exc:
         # The text looked like a key but isn't a valid RSA private key.
+        logger.warning("GitHub App key could not be loaded: %s", type(exc).__name__)
         raise GitHubError(KEY_UNREADABLE) from exc
 
 
