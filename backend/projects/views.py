@@ -13,13 +13,16 @@ from rest_framework.throttling import ScopedRateThrottle
 
 from .delivery import requirements_markdown
 from .masking import mask_personal_data
-from .models import CONSENT_VERSION, DeletionRecord, FollowUpQuestion, Project, UserStory
+from .data_model import DataModelGenerationError, generate_data_model
+from .models import CONSENT_VERSION, DataModel, DeletionRecord, FollowUpQuestion, Project, UserStory
 from .progress import refresh_if_stale
 from .questions import QuestionGenerationError, generate_questions
 from .retention import delete_project
 from .serializers import (
     AnswerSerializer,
     ChangeRequestSerializer,
+    DataModelRequestSerializer,
+    DataModelSerializer,
     FollowUpQuestionSerializer,
     ProjectSerializer,
     StoryInputSerializer,
@@ -38,6 +41,7 @@ THROTTLED_ACTIONS = {
     "questions": "questions",
     "stories": "stories",
     "revise_stories": "stories",
+    "data_model": "stories",
 }
 
 AI_BUSY = "Our AI is busy right now. Please try again in a few minutes."
@@ -431,6 +435,45 @@ class ProjectViewSet(
         story = serializer.save(client_edited=story.origin == UserStory.Origin.AI)
         return Response(UserStorySerializer(story).data)
 
+    @action(detail=True, methods=["get", "post"], url_path="data-model")
+    def data_model(self, request, pk=None):
+        """GET: the data summary, or null. POST: have the AI write it, or
+        rewrite it following the client's note (AI5, C6). Only in review."""
+        project = self.get_object()
+        current = DataModel.objects.filter(project=project).first()
+        if request.method == "GET":
+            return Response({"data_model": DataModelSerializer(current).data if current else None})
+        if project.status != Project.Status.AWAITING_CLIENT:
+            return not_in_review()
+
+        serializer = DataModelRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        note = serializer.validated_data.get("note", "").strip()
+        masked_transcripts, answers = self.interview_for_ai(project)
+        try:
+            result = generate_data_model(
+                masked_transcripts,
+                answers,
+                [story_for_ai(story) for story in project.stories.all()],
+                # Rewrite from the current summary only when asked for a change.
+                current_model=current.for_ai() if current and note else None,
+                change_request=mask_personal_data(note) if note else None,
+            )
+        except DataModelGenerationError:
+            return Response({"detail": AI_BUSY}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        data = result.model.model_dump()
+        saved, _ = DataModel.objects.update_or_create(
+            project=project,
+            defaults={
+                "entities": data["entities"],
+                "relationships": data["relationships"],
+                "provider": result.provider,
+                "confirmed_at": None,
+            },
+        )
+        return Response({"data_model": DataModelSerializer(saved).data}, status=status.HTTP_201_CREATED)
+
     @action(detail=True, methods=["post"])
     def approve(self, request, pk=None):
         """Approve the stories and send them to the admin (C9). They lock."""
@@ -443,7 +486,10 @@ class ProjectViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        project.status = Project.Status.AWAITING_ADMIN
-        project.approved_at = timezone.now()
-        project.save(update_fields=["status", "approved_at", "updated_at"])
+        with transaction.atomic():
+            project.status = Project.Status.AWAITING_ADMIN
+            project.approved_at = timezone.now()
+            project.save(update_fields=["status", "approved_at", "updated_at"])
+            # Approving also confirms the data summary, if there is one (C6).
+            DataModel.objects.filter(project=project).update(confirmed_at=project.approved_at)
         return Response(ProjectSerializer(project).data)

@@ -2,6 +2,7 @@
 
 import { type FormEvent, useCallback, useState } from "react";
 
+import { DataModelView } from "@/components/DataModel";
 import { GitHubDelivery } from "@/components/GitHubDelivery";
 import {
   buttonClass,
@@ -156,6 +157,20 @@ export function AdminProjectReview({ id }: { id: string }) {
           ))}
         </ol>
       </section>
+
+      {project.data_model && (
+        <section aria-labelledby="team-data-heading" className="flex flex-col gap-3">
+          <h2 id="team-data-heading" className="text-xl font-semibold">
+            Data model
+          </h2>
+          <p className="text-sm text-neutral-600 dark:text-neutral-300">
+            Written by AI from the masked interview
+            {project.data_model.confirmed_at ? " and confirmed by the client" : ""}. It goes into
+            requirements.md.
+          </p>
+          <DataModelView summary={project.data_model} />
+        </section>
+      )}
 
       {project.progress && <ProgressBar progress={project.progress} />}
 

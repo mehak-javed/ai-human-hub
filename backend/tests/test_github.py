@@ -329,7 +329,8 @@ def test_requirements_include_what_the_client_said_about_data(project):
 
     text = requirements_markdown(project, list(project.stories.all()), repo)
 
-    assert "## Information the system keeps" in text
+    assert "## Data model" in text
+    assert "### What the client said about their data" in text
     assert "What do you keep about each order?" in text
     # Only the masked answer goes into the repo.
     assert "Sam" not in text

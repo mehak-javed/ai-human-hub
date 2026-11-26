@@ -20,9 +20,9 @@ from accounts.permissions import IsAdminRole
 from . import github
 from .dashboard import dashboard
 from .delivery import send_to_github
-from .models import FollowUpQuestion, GitHubPush, Project, StoryChange, UserStory
+from .models import DataModel, FollowUpQuestion, GitHubPush, Project, StoryChange, UserStory
 from .progress import progress, refresh_if_stale
-from .serializers import StoryInputSerializer, UserStorySerializer
+from .serializers import DataModelSerializer, StoryInputSerializer, UserStorySerializer
 
 MAX_STORIES_IN_ONE_CHANGE = 10
 
@@ -91,6 +91,7 @@ class AdminProjectDetailSerializer(AdminProjectListSerializer):
     pushes = serializers.SerializerMethodField()
     github = serializers.SerializerMethodField()
     progress = serializers.SerializerMethodField()
+    data_model = serializers.SerializerMethodField()
 
     class Meta(AdminProjectListSerializer.Meta):
         fields = AdminProjectListSerializer.Meta.fields + [
@@ -101,7 +102,12 @@ class AdminProjectDetailSerializer(AdminProjectListSerializer):
             "pushes",
             "github",
             "progress",
+            "data_model",
         ]
+
+    def get_data_model(self, project) -> dict | None:
+        found = DataModel.objects.filter(project=project).first()
+        return DataModelSerializer(found).data if found else None
 
     def get_progress(self, project) -> dict | None:
         return progress(project)
