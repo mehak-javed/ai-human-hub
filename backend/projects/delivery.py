@@ -5,6 +5,8 @@ every story stores its issue number the moment the issue exists, so a retry
 updates those issues and creates only the missing ones (G5, G6).
 """
 
+import re
+
 from django.utils import timezone
 
 from .github import REQUIREMENTS_PATH, GitHub, GitHubError, Repo, make_http_client
@@ -19,8 +21,19 @@ SOURCE_LABEL = ("from: ai-human-hub", "5319e7")
 MAX_TITLE_LENGTH = 256
 
 
+# Words whose first letter is misleading: "a user", "a one-off buyer", "an hour".
+SOUNDS_LIKE_CONSONANT = re.compile(r"^(?:u(?:s|ni|ti|r[aeiou])|eu|one\b|once\b)", re.IGNORECASE)
+SOUNDS_LIKE_VOWEL = re.compile(r"^(?:hour|honest|honou?r|heir)", re.IGNORECASE)
+
+
 def article(role: str) -> str:
-    return "an" if role[:1].lower() in "aeiou" else "a"
+    """'a' or 'an', by how the word sounds: 'an admin', 'a user', 'an hourly worker'."""
+    word = role.strip()
+    if SOUNDS_LIKE_VOWEL.match(word):
+        return "an"
+    if SOUNDS_LIKE_CONSONANT.match(word):
+        return "a"
+    return "an" if word[:1].lower() in "aeiou" else "a"
 
 
 def sentence(story: UserStory) -> str:

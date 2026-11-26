@@ -234,6 +234,8 @@ function AdminStoryCard({
             onSubmit={(input) =>
               run(async (token) => {
                 await adminEditStory(token, projectId, story.id, input);
+                // Close the form, so a second press can't save the same edit twice.
+                setMode("view");
                 onChanged();
               })
             }
@@ -409,6 +411,34 @@ function MergeEditor({
   );
 }
 
+const FIELD_LABELS: Record<string, string> = {
+  role: "who",
+  goal: "what they want",
+  reason: "why",
+  acceptance_criteria: "checks",
+  priority: "priority",
+};
+
+/** One line saying what changed: which fields for an edit, which stories otherwise. */
+export function describeChange(change: StoryChange): string {
+  const [before] = change.before;
+  const [after] = change.after;
+  if (change.action === "edit" && before && after) {
+    const changed = Object.keys(FIELD_LABELS).filter(
+      (field) =>
+        JSON.stringify(before[field as keyof StoryInput]) !== JSON.stringify(after[field as keyof StoryInput]),
+    );
+    const parts = changed.map((field) =>
+      field === "priority" || field === "goal"
+        ? `${FIELD_LABELS[field]}: ${before[field as keyof StoryInput]} → ${after[field as keyof StoryInput]}`
+        : `${FIELD_LABELS[field]} changed`,
+    );
+    return `"${after.goal}": ${parts.join("; ") || "no visible change"}`;
+  }
+  const goals = (stories: StoryInput[]) => stories.map((s) => `"${s.goal}"`).join(", ");
+  return `${goals(change.before) || "—"} → ${goals(change.after) || "removed"}`;
+}
+
 function ChangeLog({ changes }: { changes: StoryChange[] }) {
   return (
     <section className="flex flex-col gap-3">
@@ -423,11 +453,7 @@ function ChangeLog({ changes }: { changes: StoryChange[] }) {
                 {ACTION_LABELS[change.action]} by {change.changed_by} ·{" "}
                 {dateTimeFormat.format(new Date(change.created_at))}
               </p>
-              <p className="text-neutral-600 dark:text-neutral-300">
-                {change.before.map((s) => s.goal).join(", ") || "—"}
-                {" → "}
-                {change.after.map((s) => s.goal).join(", ") || "removed"}
-              </p>
+              <p className="text-neutral-600 dark:text-neutral-300">{describeChange(change)}</p>
               {change.note && <p className="mt-1">Reason: {change.note}</p>}
             </li>
           ))}

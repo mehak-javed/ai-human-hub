@@ -182,6 +182,20 @@ def test_admin_edit_is_saved_and_logged(admin, project):
 
 
 @pytest.mark.django_db
+def test_saving_without_changes_is_not_logged(admin, project):
+    # Seen live: pressing Save again on an unchanged story logged it again.
+    story = story_at(project, 1)
+    client = client_for(admin)
+    edit = {"goal": "pay online by card"}
+
+    client.patch(url("edit-story", project.id, story.id), edit, format="json")
+    response = client.patch(url("edit-story", project.id, story.id), edit, format="json")
+
+    assert response.status_code == 200
+    assert StoryChange.objects.count() == 1
+
+
+@pytest.mark.django_db
 def test_invalid_edit_changes_nothing(admin, project):
     story = story_at(project, 0)
 

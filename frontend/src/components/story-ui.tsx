@@ -16,9 +16,15 @@ export const primaryClass =
 export const inputClass =
   "rounded-md border border-neutral-300 p-2 text-base dark:border-neutral-700 dark:bg-neutral-950";
 
-/** "a patient", "an admin". */
+// Words whose first letter is misleading: "a user", "a one-off buyer", "an hour".
+const SOUNDS_LIKE_CONSONANT = /^(?:u(?:s|ni|ti|r[aeiou])|eu|one\b|once\b)/i;
+const SOUNDS_LIKE_VOWEL = /^(?:hour|honest|honou?r|heir)/i;
+
+/** "a patient", "an admin", "a user", "an hourly worker": by sound, not spelling. */
 export function withArticle(role: string): string {
-  return `${/^[aeiou]/i.test(role) ? "an" : "a"} ${role}`;
+  const word = role.trim();
+  const an = SOUNDS_LIKE_VOWEL.test(word) || (!SOUNDS_LIKE_CONSONANT.test(word) && /^[aeiou]/i.test(word));
+  return `${an ? "an" : "a"} ${role}`;
 }
 
 export function errorMessage(error: unknown): string {
