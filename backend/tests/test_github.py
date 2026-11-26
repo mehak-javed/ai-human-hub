@@ -190,6 +190,21 @@ def test_private_key_can_be_base64_encoded(app_settings, key_pair):
     assert jwt.decode(github.app_jwt(), key_pair[1], algorithms=["RS256"])["iss"] == "12345"
 
 
+@pytest.mark.parametrize("value", ["not base64 at all!", "LS0tLS1CRUdJTg", base64.b64encode(b"hello").decode()])
+def test_an_unreadable_key_is_a_clear_error(app_settings, value):
+    app_settings.GITHUB_APP_PRIVATE_KEY = value
+
+    with pytest.raises(GitHubError, match="private key"):
+        github.app_jwt()
+
+
+def test_a_key_pasted_with_line_breaks_still_works(app_settings, key_pair):
+    encoded = base64.b64encode(key_pair[0].encode()).decode()
+    app_settings.GITHUB_APP_PRIVATE_KEY = "\n".join(encoded[i : i + 64] for i in range(0, len(encoded), 64))
+
+    assert jwt.decode(github.app_jwt(), key_pair[1], algorithms=["RS256"])["iss"] == "12345"
+
+
 # --- Connecting a repo (A6) ------------------------------------------------------
 
 
@@ -206,6 +221,11 @@ def test_connecting_a_private_repo(fake_github):
     assert fake_github.token_requests == [
         {"repositories": ["bakery"], "permissions": {"issues": "write", "contents": "write", "metadata": "read"}}
     ]
+
+
+@pytest.mark.parametrize("pasted", [f"https://github.com/{REPO}", f"github.com/{REPO}/", f"https://github.com/{REPO}.git"])
+def test_a_pasted_github_address_is_accepted(fake_github, pasted):
+    assert connect(pasted).full_name == REPO
 
 
 def test_public_repos_are_refused(fake_github):
@@ -375,6 +395,22 @@ def test_admin_connects_a_repo(fake_github, project, admin):
     assert response.json() == {"repo": REPO, "url": f"https://github.com/{REPO}"}
     project.refresh_from_db()
     assert project.github_repo == REPO
+
+
+@pytest.mark.django_db
+def test_a_broken_key_is_explained_not_a_server_error(fake_github, project, admin, app_settings):
+    # Seen live: a base64 key cut short when it was pasted into the dashboard.
+    app_settings.GITHUB_APP_PRIVATE_KEY = "LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFb3dJQkFBS0NBUUVB1"
+    project.github_repo = ""
+    project.save()
+
+    response = client_for(admin).post(
+        reverse("admin-project-connect-github", args=[project.id]), {"repo": REPO}, format="json"
+    )
+
+    assert response.status_code == 400
+    assert "private key" in response.json()["detail"]
+    assert fake_github.calls == []
 
 
 @pytest.mark.django_db

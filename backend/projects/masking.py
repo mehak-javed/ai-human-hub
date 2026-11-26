@@ -17,11 +17,15 @@ EMAIL = "[EMAIL]"
 PHONE = "[PHONE]"
 ADDRESS = "[ADDRESS]"
 
-# Emails, written ("sam.lee@gmail.com") or spoken ("sam dot lee at gmail dot com").
+# Emails, written ("sam.lee@gmail.com"), spoken ("sam dot lee at gmail dot com")
+# or a mix, as speech-to-text often writes them ("sam27 at the gmail.com").
 WRITTEN_EMAIL = re.compile(r"\b[\w.+-]+@[\w-]+(?:\.[\w-]+)+\b")
+_DOT = r"(?:\.|\s+dot\s+)"
+# "at the gmail.com" is only read as an email for well-known mail providers.
+_PROVIDERS = r"(?:gmail|googlemail|hotmail|outlook|yahoo|icloud|live|protonmail|proton|aol)"
 SPOKEN_EMAIL = re.compile(
-    r"\b\w+(?:\s+dot\s+\w+)*\s+at\s+\w+(?:\s+dot\s+\w+)*"
-    r"\s+dot\s+(?:com|co|uk|org|net|io|ac|gov|edu|info|biz|me)\b",
+    rf"\b[\w+-]+(?:{_DOT}[\w+-]+)*\s+at\s+(?:the\s+(?={_PROVIDERS}\b))?[\w-]+(?:{_DOT}[\w-]+)*"
+    rf"{_DOT}(?:com|co|uk|org|net|io|ac|gov|edu|info|biz|me)\b",
     re.IGNORECASE,
 )
 
