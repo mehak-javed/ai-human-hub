@@ -527,3 +527,21 @@ def test_detail_shows_pushes_and_github_setup(fake_github, project, admin):
     }
     assert body["pushes"][0]["status"] == "succeeded"
     assert body["github_repo"] == REPO
+
+
+@pytest.mark.parametrize(
+    "role, expected",
+    [
+        ("user", "a"),
+        ("university student", "a"),
+        ("European buyer", "a"),
+        ("one-off customer", "a"),
+        ("admin", "an"),
+        ("owner", "an"),
+        ("hourly worker", "an"),
+        ("customer", "a"),
+        ("umbrella seller", "an"),
+    ],
+)
+def test_article_follows_how_the_role_sounds(role, expected):
+    assert delivery.article(role) == expected

@@ -250,7 +250,10 @@ class AdminProjectViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, view
         before = story.snapshot()
         with transaction.atomic():
             story = serializer.save()
-            self.record(project, StoryChange.Action.EDIT, [before], [story.snapshot()])
+            after = story.snapshot()
+            # Saving without changing anything isn't a change worth logging.
+            if after != before:
+                self.record(project, StoryChange.Action.EDIT, [before], [after])
         return Response(UserStorySerializer(story).data)
 
     @action(detail=True, methods=["post"], url_path=r"stories/(?P<story_id>\d+)/reject")
