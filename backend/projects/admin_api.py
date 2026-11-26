@@ -11,13 +11,14 @@ from django.db import transaction
 from django.db.models import F
 from django.shortcuts import get_object_or_404
 from rest_framework import mixins, serializers, status, viewsets
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from accounts.permissions import IsAdminRole
 
 from . import github
+from .dashboard import dashboard
 from .delivery import send_to_github
 from .models import FollowUpQuestion, GitHubPush, Project, StoryChange, UserStory
 from .serializers import StoryInputSerializer, UserStorySerializer
@@ -378,3 +379,10 @@ class AdminProjectViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, view
             # 502: GitHub, not our request, was the problem. Safe to try again.
             return Response(body, status=status.HTTP_502_BAD_GATEWAY)
         return Response(body)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated, IsAdminRole])
+def dashboard_view(request):
+    """The team's dashboard: overview, charts, AI quality and AI usage (A2, A7, A9, AI7)."""
+    return Response(dashboard())

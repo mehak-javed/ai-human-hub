@@ -60,6 +60,9 @@ flowchart LR
   an injected instruction could produce.
 - **Resilience:** Cloudflare Workers AI is the primary model provider and Groq
   the backup. Switches are logged without client content.
+- **Measured quality:** the team dashboard shows how many AI stories were
+  approved unchanged versus edited, merged, split or rejected, and how much
+  of each provider's free daily quota has been used.
 
 ## Security
 
@@ -160,7 +163,7 @@ Sending to GitHub needs a GitHub App: see [docs/github-app-setup.md](docs/github
 - [x] Client review and approval
 - [x] Team review (edit, merge, split, reject) with a change log
 - [x] Send to GitHub: issues and requirements.md
-- [ ] Dashboards: AI usage against free limits, AI acceptance rate
+- [x] Team dashboard: overview, AI usage against the free limits (warns at 80%), AI acceptance rate, activity charts
 - [x] Privacy: delete my project, Markdown export, 12-month retention clean-up, privacy notice
 - [ ] Weekly database backups and invite-only sign-up
 

@@ -126,6 +126,8 @@ class UserStory(models.Model):
             "reason": self.reason,
             "acceptance_criteria": self.acceptance_criteria,
             "priority": self.priority,
+            # Kept so AI quality (AI7) can still count removed AI stories.
+            "origin": self.origin,
         }
 
 
@@ -249,3 +251,31 @@ class DeletionRecord(models.Model):
 
     def __str__(self) -> str:
         return f"Project {self.project_id}: {self.get_reason_display()}"
+
+
+class AIUsage(models.Model):
+    """How much of each AI provider's free quota we used, per day (A7, N1, N8).
+
+    One row per UTC day, provider and feature. Workers AI reports its cost in
+    "neurons" (10,000 free per day); Groq reports its own request limit and
+    what's left in response headers, so we store what it last told us.
+    """
+
+    day = models.DateField()
+    provider = models.CharField(max_length=20)
+    # transcription, follow_up_questions or user_stories
+    feature = models.CharField(max_length=30)
+    calls = models.PositiveIntegerField(default=0)
+    neurons = models.FloatField(default=0)
+    request_limit = models.PositiveIntegerField(null=True, blank=True)
+    requests_remaining = models.PositiveIntegerField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-day", "provider", "feature"]
+        constraints = [
+            models.UniqueConstraint(fields=["day", "provider", "feature"], name="one_usage_row_per_day")
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.day} {self.provider} {self.feature}: {self.calls} calls"

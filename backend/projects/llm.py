@@ -21,6 +21,8 @@ from typing import TypeVar
 import httpx
 from django.conf import settings
 
+from .usage import record_ai_call
+
 logger = logging.getLogger(__name__)
 
 WORKERS_AI_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
@@ -74,8 +76,10 @@ def ask_workers_ai(messages: Messages, schema_name: str, json_schema: dict) -> o
         timeout=PROVIDER_TIMEOUT_SECONDS,
     )
     response.raise_for_status()
+    result = response.json()["result"]
+    record_ai_call("workers_ai", schema_name, neurons=(result.get("usage") or {}).get("neurons"))
     # With a JSON schema the answer usually comes back already parsed.
-    return response.json()["result"]["response"]
+    return result["response"]
 
 
 def ask_groq(messages: Messages, schema_name: str, json_schema: dict) -> object:
@@ -95,6 +99,7 @@ def ask_groq(messages: Messages, schema_name: str, json_schema: dict) -> object:
         timeout=PROVIDER_TIMEOUT_SECONDS,
     )
     response.raise_for_status()
+    record_ai_call("groq", schema_name, headers=response.headers)
     return response.json()["choices"][0]["message"]["content"]
 
 
