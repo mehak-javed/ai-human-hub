@@ -21,6 +21,7 @@ from . import github
 from .dashboard import dashboard
 from .delivery import send_to_github
 from .models import FollowUpQuestion, GitHubPush, Project, StoryChange, UserStory
+from .progress import progress, refresh_if_stale
 from .serializers import StoryInputSerializer, UserStorySerializer
 
 MAX_STORIES_IN_ONE_CHANGE = 10
@@ -89,6 +90,7 @@ class AdminProjectDetailSerializer(AdminProjectListSerializer):
     changes = StoryChangeSerializer(source="story_changes", many=True)
     pushes = serializers.SerializerMethodField()
     github = serializers.SerializerMethodField()
+    progress = serializers.SerializerMethodField()
 
     class Meta(AdminProjectListSerializer.Meta):
         fields = AdminProjectListSerializer.Meta.fields + [
@@ -98,7 +100,11 @@ class AdminProjectDetailSerializer(AdminProjectListSerializer):
             "changes",
             "pushes",
             "github",
+            "progress",
         ]
+
+    def get_progress(self, project) -> dict | None:
+        return progress(project)
 
     def get_pushes(self, project) -> list[dict]:
         return GitHubPushSerializer(project.github_pushes.all()[:5], many=True).data
@@ -214,6 +220,11 @@ class AdminProjectViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, view
         if client and client.isdigit():
             projects = projects.filter(owner_id=int(client))
         return projects
+
+    def retrieve(self, request, *args, **kwargs):
+        # G4: a delivered project's progress is at most a minute old when viewed.
+        refresh_if_stale(self.get_object())
+        return super().retrieve(request, *args, **kwargs)
 
     def get_serializer_class(self):
         if self.action == "list":

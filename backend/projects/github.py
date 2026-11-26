@@ -236,6 +236,23 @@ class GitHub:
         time.sleep(PAUSE_BETWEEN_WRITES_SECONDS)
         return response.json()
 
+    def closed_issue_numbers(self, repo: Repo, label: str) -> set[int]:
+        """Numbers of our issues (by label) that are closed (G4)."""
+        closed: set[int] = set()
+        for page in range(1, 11):  # at most 1,000 issues
+            response = self.request(
+                "GET",
+                f"/repos/{repo.full_name}/issues",
+                params={"state": "closed", "labels": label, "per_page": 100, "page": page},
+            )
+            if response.status_code != 200:
+                raise GitHubError(f"Couldn't read the issues ({describe(response)}).")
+            items = response.json()
+            closed.update(item["number"] for item in items if "pull_request" not in item)
+            if len(items) < 100:
+                break
+        return closed
+
     def update_issue(self, repo: Repo, number: int, issue: dict) -> dict | None:
         """Update an issue we created before. Returns None if it was deleted."""
         response = self.request("PATCH", f"/repos/{repo.full_name}/issues/{number}", json=issue)

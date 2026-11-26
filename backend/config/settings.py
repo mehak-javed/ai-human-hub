@@ -157,6 +157,8 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
 GITHUB_APP_ID = os.environ.get("GITHUB_APP_ID", "").strip()
 GITHUB_APP_PRIVATE_KEY = os.environ.get("GITHUB_APP_PRIVATE_KEY", "").strip()
 GITHUB_APP_SLUG = os.environ.get("GITHUB_APP_SLUG", "").strip()
+# Signs the App's webhook deliveries (G4). Set the same value in the App's settings.
+GITHUB_WEBHOOK_SECRET = os.environ.get("GITHUB_WEBHOOK_SECRET", "").strip()
 
 # Free daily AI limits shown on the dashboard (A7, N1). Groq reports its own
 # limits in response headers, so only Workers AI's is set here.
