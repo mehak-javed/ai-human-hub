@@ -170,7 +170,7 @@ def test_entries_say_who_did_it(alice, admin, fake_stories):  # noqa: F811
 
     assert response.status_code == 200
     who = {row["action"]: row["who"] for row in response.json()["events"]}
-    assert who == {"approved": "Alice", "stories_written": "AI"}
+    assert who == {"approved": "Alice", "stories_written": ""}
 
 
 @pytest.mark.django_db
@@ -261,3 +261,13 @@ def test_existing_projects_get_their_history(alice, admin):  # noqa: F811
     # Running it again adds nothing.
     migration.backfill(apps, None)
     assert AuditEvent.objects.count() == 5
+
+
+@pytest.mark.parametrize(
+    "count, word, expected",
+    [(1, "story", "1 story"), (5, "story", "5 stories"), (2, "entity", "2 entities"), (3, "issue", "3 issues"), (2, "day", "2 days")],
+)
+def test_counts_read_naturally(count, word, expected):
+    from projects.audit import plural
+
+    assert plural(count, word) == expected

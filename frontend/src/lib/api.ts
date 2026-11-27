@@ -522,6 +522,7 @@ export type AuditEntry = {
   /** null once the project is deleted: the deletion record keeps no name. */
   project_name: string | null;
   actor: "client" | "team" | "ai" | "github" | "system";
+  /** The person who did it; "" when it was the AI, GitHub or the client's deletion. */
   who: string;
   action: string;
   label: string;

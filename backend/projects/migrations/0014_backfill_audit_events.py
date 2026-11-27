@@ -13,7 +13,11 @@ TEAM = {"edit": "team_edit", "reject": "team_reject", "merge": "team_merge", "sp
 
 
 def plural(count, word):
-    return f"{count} {word}{'' if count == 1 else 's'}"
+    if count == 1:
+        return f"{count} {word}"
+    if word.endswith("y"):
+        return f"{count} {word[:-1]}ies"
+    return f"{count} {word}s"
 
 
 def backfill(apps, schema_editor):

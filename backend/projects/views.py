@@ -498,7 +498,7 @@ class ProjectViewSet(
             project,
             Action.DATA_MODEL_REWRITTEN if note and current else Action.DATA_MODEL_WRITTEN,
             Actor.AI,
-            f"{provider_name(result.provider)} listed {plural(len(data['entities']), 'entity').replace('entitys', 'entities')}"
+            f"{provider_name(result.provider)} listed {plural(len(data['entities']), 'entity')}"
             + (", following the client's note" if note and current else ""),
         )
         return Response({"data_model": DataModelSerializer(saved).data}, status=status.HTTP_201_CREATED)

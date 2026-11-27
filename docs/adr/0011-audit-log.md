@@ -39,3 +39,6 @@ AI outputs and approvals left no trace beyond a timestamp.
   the review page; the audit event keeps the fact.
 - Entries with exactly the same timestamp could straddle a page boundary;
   with microsecond times this is very unlikely.
+- Migration 0015 corrected our own wording slip ("storys") in entries
+  written before the fix. That is the only time entries were touched, and
+  only the app's formatting changed: no event was added, removed or moved.
