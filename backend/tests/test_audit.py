@@ -160,6 +160,20 @@ def test_only_the_team_can_read_the_log(alice, admin):  # noqa: F811
 
 
 @pytest.mark.django_db
+def test_entries_say_who_did_it(alice, admin, fake_stories):  # noqa: F811
+    # Seen live: an entry with a person attached crashed the page.
+    project = interviewing_project(alice)
+    client_for(alice).post(reverse("project-stories", args=[project.id]))
+    client_for(alice).post(reverse("project-approve", args=[project.id]))
+
+    response = get_log(admin)
+
+    assert response.status_code == 200
+    who = {row["action"]: row["who"] for row in response.json()["events"]}
+    assert who == {"approved": "Alice", "stories_written": "AI"}
+
+
+@pytest.mark.django_db
 def test_the_log_is_read_only(admin):  # noqa: F811
     team = client_for(admin)
     for method in ("post", "put", "patch", "delete"):
