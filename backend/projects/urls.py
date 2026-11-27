@@ -1,7 +1,7 @@
 from django.urls import path
 from rest_framework.routers import SimpleRouter
 
-from .admin_api import AdminProjectViewSet, dashboard_view
+from .admin_api import AdminProjectViewSet, audit_view, dashboard_view
 from .views import ProjectViewSet
 from .webhooks import github_webhook
 
@@ -12,6 +12,7 @@ router.register("admin/projects", AdminProjectViewSet, basename="admin-project")
 
 urlpatterns = [
     path("admin/dashboard/", dashboard_view, name="admin-dashboard"),
+    path("admin/audit/", audit_view, name="admin-audit"),
     path("github/webhook/", github_webhook, name="github-webhook"),
     *router.urls,
 ]

@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import AIUsage, DeletionRecord, FollowUpQuestion, GitHubPush, Project, StoryChange, Transcript, UserStory
+from .models import AIUsage, AuditEvent, DeletionRecord, FollowUpQuestion, GitHubPush, Project, StoryChange, Transcript, UserStory
 
 
 class TranscriptInline(admin.TabularInline):
@@ -89,4 +89,22 @@ class AIUsageAdmin(admin.ModelAdmin):
         return False
 
     def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(AuditEvent)
+class AuditEventAdmin(admin.ModelAdmin):
+    """The audit log (A8). Written by the app only, so read-only here."""
+
+    list_display = ("created_at", "project", "actor", "action", "detail", "user")
+    list_filter = ("actor", "action")
+    search_fields = ("project__name", "detail")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
         return False

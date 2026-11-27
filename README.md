@@ -112,6 +112,7 @@ Each significant decision is written up as an Architecture Decision Record:
 | [0008](docs/adr/0008-github-delivery.md) | GitHub delivery through an App, safe to retry |
 | [0009](docs/adr/0009-progress-from-github.md) | Progress from GitHub issues: signed webhook plus a catch-up read |
 | [0010](docs/adr/0010-data-model-extraction.md) | AI-extracted data model, confirmed by the client, tables in requirements.md |
+| [0011](docs/adr/0011-audit-log.md) | Append-only audit log with no client words in it |
 
 ## Running it locally
 
@@ -169,6 +170,7 @@ Sending to GitHub needs a GitHub App: see [docs/github-app-setup.md](docs/github
 - [x] Privacy: delete my project, Markdown export, 12-month retention clean-up, privacy notice
 - [x] Progress: closed GitHub issues show as built for the client and the team (signed webhook + catch-up sync)
 - [x] Data model: AI extracts entities, fields and relationships; the client confirms; tables in requirements.md
+- [x] Audit log: every AI output, change, approval and push, read-only, filterable by project
 - [ ] Weekly database backups and invite-only sign-up
 
 See [docs/use-cases.md](docs/use-cases.md) for the full specification.

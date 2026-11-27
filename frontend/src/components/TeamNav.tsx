@@ -1,7 +1,7 @@
 import Link from "next/link";
 
-/** Switch between the team's two pages. */
-export function TeamNav({ current }: { current: "review" | "dashboard" }) {
+/** Switch between the team's pages. */
+export function TeamNav({ current }: { current: "review" | "dashboard" | "audit" }) {
   const item = (href: string, label: string, active: boolean) => (
     <Link
       href={href}
@@ -15,6 +15,7 @@ export function TeamNav({ current }: { current: "review" | "dashboard" }) {
     <nav className="flex gap-4 text-sm">
       {item("/admin", "Projects to review", current === "review")}
       {item("/admin/dashboard", "Dashboard", current === "dashboard")}
+      {item("/admin/audit", "Audit log", current === "audit")}
     </nav>
   );
 }

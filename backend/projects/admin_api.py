@@ -10,6 +10,7 @@ privilege). Every change to a story is recorded in StoryChange (A4).
 from django.db import transaction
 from django.db.models import F
 from django.shortcuts import get_object_or_404
+from django.utils.dateparse import parse_datetime
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -18,9 +19,11 @@ from rest_framework.response import Response
 from accounts.permissions import IsAdminRole
 
 from . import github
+from .audit import Action, Actor, plural
+from .audit import record as audit
 from .dashboard import dashboard
 from .delivery import send_to_github
-from .models import DataModel, FollowUpQuestion, GitHubPush, Project, StoryChange, UserStory
+from .models import AuditEvent, DataModel, DeletionRecord, FollowUpQuestion, GitHubPush, Project, StoryChange, UserStory
 from .progress import progress, refresh_if_stale
 from .serializers import DataModelSerializer, StoryInputSerializer, UserStorySerializer
 
@@ -166,6 +169,14 @@ class SplitSerializer(serializers.Serializer):
 # --- Helpers -------------------------------------------------------------------
 
 
+TEAM_ACTIONS = {
+    StoryChange.Action.EDIT: Action.TEAM_EDIT,
+    StoryChange.Action.REJECT: Action.TEAM_REJECT,
+    StoryChange.Action.MERGE: Action.TEAM_MERGE,
+    StoryChange.Action.SPLIT: Action.TEAM_SPLIT,
+}
+
+
 def not_awaiting_admin() -> Response:
     return Response(
         {"detail": "Stories can only be changed while the project is waiting for our review."},
@@ -246,6 +257,15 @@ class AdminProjectViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, view
             after=after,
             note=note,
         )
+        # A8: the same change in the audit log, as story IDs and counts only.
+        ids = ", ".join(str(s["id"]) for s in before)
+        detail = {
+            StoryChange.Action.EDIT: f"Story {ids}",
+            StoryChange.Action.REJECT: f"Story {ids}, with a reason",
+            StoryChange.Action.MERGE: f"Stories {ids} into 1",
+            StoryChange.Action.SPLIT: f"Story {ids} into {len(after)}",
+        }[action_name]
+        audit(project, TEAM_ACTIONS[action_name], Actor.TEAM, detail, self.request.user)
 
     def editable_project(self):
         """The project, or a 409 response if it isn't waiting for our review."""
@@ -371,6 +391,7 @@ class AdminProjectViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, view
 
         project.github_repo = repo.full_name
         project.save(update_fields=["github_repo", "updated_at"])
+        audit(project, Action.REPO_CONNECTED, Actor.TEAM, repo.full_name, request.user)
         return Response({"repo": repo.full_name, "url": repo.html_url})
 
     @action(detail=True, methods=["post"], url_path="send")
@@ -394,6 +415,16 @@ class AdminProjectViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, view
 
         push = send_to_github(project, request.user)
         project.refresh_from_db()
+        if push.status == GitHubPush.Status.FAILED:
+            audit(project, Action.SEND_FAILED, Actor.TEAM, push.error, request.user)
+        else:
+            audit(
+                project,
+                Action.SENT_TO_GITHUB,
+                Actor.TEAM,
+                f"{push.repo}: {plural(push.issues_created, 'issue')} created, {push.issues_updated} updated",
+                request.user,
+            )
         body = {"push": GitHubPushSerializer(push).data, "status": project.status}
         if push.status == GitHubPush.Status.FAILED:
             # 502: GitHub, not our request, was the problem. Safe to try again.
@@ -406,3 +437,78 @@ class AdminProjectViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, view
 def dashboard_view(request):
     """The team's dashboard: overview, charts, AI quality and AI usage (A2, A7, A9, AI7)."""
     return Response(dashboard())
+
+
+# --- Audit log (A8) ---------------------------------------------------------------
+
+AUDIT_PAGE_SIZE = 50
+ACTOR_NAMES = {AuditEvent.Actor.AI: "AI", AuditEvent.Actor.GITHUB: "GitHub"}
+
+
+def audit_row(event: AuditEvent) -> dict:
+    who = event.user.display_name() if event.user else ACTOR_NAMES.get(event.actor, event.get_actor_display())
+    return {
+        "id": f"e{event.pk}",
+        "at": event.created_at,
+        "project_id": event.project_id,
+        "project_name": event.project.name,
+        "actor": event.actor,
+        "who": who,
+        "action": event.action,
+        "label": event.get_action_display(),
+        "detail": event.detail,
+    }
+
+
+def deletion_row(deletion: DeletionRecord) -> dict:
+    return {
+        "id": f"d{deletion.pk}",
+        "at": deletion.deleted_at,
+        "project_id": deletion.project_id,
+        # Deliberately unknown: the record keeps no name (C11).
+        "project_name": None,
+        "actor": "client" if deletion.reason == DeletionRecord.Reason.CLIENT_REQUEST else "system",
+        "who": "Client" if deletion.reason == DeletionRecord.Reason.CLIENT_REQUEST else "Retention clean-up",
+        "action": "deleted",
+        "label": f"Project deleted ({deletion.get_reason_display().lower()})",
+        "detail": f"{deletion.transcripts} recordings and {deletion.stories} stories removed",
+    }
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated, IsAdminRole])
+def audit_view(request):
+    """A8: every AI output, change, approval and push, newest first. Read-only.
+
+    ?project=<id> filters to one project; ?before=<time> pages back (pass the
+    previous page's "next").
+    """
+    events = AuditEvent.objects.select_related("project", "user")
+    deletions = DeletionRecord.objects.all()
+
+    project = request.query_params.get("project", "")
+    if project:
+        if not project.isdigit():
+            return Response({"detail": "project must be a project ID."}, status=status.HTTP_400_BAD_REQUEST)
+        events = events.filter(project_id=int(project))
+        deletions = deletions.filter(project_id=int(project))
+
+    before = request.query_params.get("before", "")
+    if before:
+        moment = parse_datetime(before.replace(" ", "+"))
+        if moment is None:
+            return Response({"detail": "before must be a date and time."}, status=status.HTTP_400_BAD_REQUEST)
+        events = events.filter(created_at__lt=moment)
+        deletions = deletions.filter(deleted_at__lt=moment)
+
+    rows = [audit_row(e) for e in events[: AUDIT_PAGE_SIZE + 1]]
+    rows += [deletion_row(d) for d in deletions.order_by("-deleted_at")[: AUDIT_PAGE_SIZE + 1]]
+    rows.sort(key=lambda row: row["at"], reverse=True)
+    page = rows[:AUDIT_PAGE_SIZE]
+    return Response(
+        {
+            "events": page,
+            "next": page[-1]["at"] if len(rows) > AUDIT_PAGE_SIZE else None,
+            "projects": list(Project.objects.order_by("-created_at").values("id", "name")[:200]),
+        }
+    )
