@@ -442,11 +442,9 @@ def dashboard_view(request):
 # --- Audit log (A8) ---------------------------------------------------------------
 
 AUDIT_PAGE_SIZE = 50
-ACTOR_NAMES = {AuditEvent.Actor.AI: "AI", AuditEvent.Actor.GITHUB: "GitHub"}
-
-
 def audit_row(event: AuditEvent) -> dict:
-    who = event.user.display_name if event.user else ACTOR_NAMES.get(event.actor, event.get_actor_display())
+    # The person, if a person did it; the actor ("AI", "GitHub") says the rest.
+    who = event.user.display_name if event.user else ""
     return {
         "id": f"e{event.pk}",
         "at": event.created_at,
@@ -468,7 +466,7 @@ def deletion_row(deletion: DeletionRecord) -> dict:
         # Deliberately unknown: the record keeps no name (C11).
         "project_name": None,
         "actor": "client" if deletion.reason == DeletionRecord.Reason.CLIENT_REQUEST else "system",
-        "who": "Client" if deletion.reason == DeletionRecord.Reason.CLIENT_REQUEST else "Retention clean-up",
+        "who": "" if deletion.reason == DeletionRecord.Reason.CLIENT_REQUEST else "Retention clean-up",
         "action": "deleted",
         "label": f"Project deleted ({deletion.get_reason_display().lower()})",
         "detail": f"{deletion.transcripts} recordings and {deletion.stories} stories removed",

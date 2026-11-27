@@ -83,7 +83,7 @@ export function AuditLog() {
                   {event.detail && <span className="text-neutral-600 dark:text-neutral-300"> · {event.detail}</span>}
                 </p>
                 <p className="text-xs text-neutral-500">
-                  {ACTORS[event.actor] ?? event.actor} · {event.who} ·{" "}
+                  {ACTORS[event.actor] ?? event.actor} · {event.who && `${event.who} · `}
                   {event.project_name ? (
                     <Link href={`/admin/projects/${event.project_id}`} className="underline">
                       {event.project_name}

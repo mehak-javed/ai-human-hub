@@ -43,4 +43,9 @@ def record(project, action: str, actor: str, detail: str = "", user=None) -> Non
 
 
 def plural(count: int, word: str) -> str:
-    return f"{count} {word}{'' if count == 1 else 's'}"
+    """'1 story', '5 stories', '2 issues'."""
+    if count == 1:
+        return f"{count} {word}"
+    if word.endswith("y") and word[-2:-1] not in "aeiou":
+        return f"{count} {word[:-1]}ies"
+    return f"{count} {word}s"
