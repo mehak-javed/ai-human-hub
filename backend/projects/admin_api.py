@@ -446,7 +446,7 @@ ACTOR_NAMES = {AuditEvent.Actor.AI: "AI", AuditEvent.Actor.GITHUB: "GitHub"}
 
 
 def audit_row(event: AuditEvent) -> dict:
-    who = event.user.display_name() if event.user else ACTOR_NAMES.get(event.actor, event.get_actor_display())
+    who = event.user.display_name if event.user else ACTOR_NAMES.get(event.actor, event.get_actor_display())
     return {
         "id": f"e{event.pk}",
         "at": event.created_at,
