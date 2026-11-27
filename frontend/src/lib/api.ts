@@ -514,6 +514,39 @@ export type Dashboard = {
   };
 };
 
+/** A8: one entry in the team's audit log. Holds no client words, only counts and IDs. */
+export type AuditEntry = {
+  id: string;
+  at: string;
+  project_id: number;
+  /** null once the project is deleted: the deletion record keeps no name. */
+  project_name: string | null;
+  actor: "client" | "team" | "ai" | "github" | "system";
+  who: string;
+  action: string;
+  label: string;
+  detail: string;
+};
+
+export type AuditPage = {
+  events: AuditEntry[];
+  /** Pass as `before` for the next, older page; null on the last page. */
+  next: string | null;
+  projects: { id: number; name: string }[];
+};
+
+export function getAuditLog(
+  token: string,
+  filters: { project?: string; before?: string },
+  signal?: AbortSignal,
+): Promise<AuditPage> {
+  const params = new URLSearchParams();
+  if (filters.project) params.set("project", filters.project);
+  if (filters.before) params.set("before", filters.before);
+  const query = params.size ? `?${params}` : "";
+  return request<AuditPage>(`/api/admin/audit/${query}`, { token, signal });
+}
+
 export function getDashboard(token: string, signal?: AbortSignal): Promise<Dashboard> {
   return request<Dashboard>("/api/admin/dashboard/", { token, signal });
 }

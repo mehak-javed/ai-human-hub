@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 from .masking import mask_personal_data
 from .questions import TOPICS
@@ -308,3 +309,59 @@ class AIUsage(models.Model):
 
     def __str__(self) -> str:
         return f"{self.day} {self.provider} {self.feature}: {self.calls} calls"
+
+
+class AuditEvent(models.Model):
+    """One thing that happened to a project, for the team's audit log (A8).
+
+    Append-only: written by the app, never edited. The detail holds only
+    counts, IDs, providers and repo names, never what the client said, so the
+    log itself keeps nothing personal. Deleting a project deletes its events;
+    the DeletionRecord remains as proof.
+    """
+
+    class Actor(models.TextChoices):
+        CLIENT = "client", "Client"
+        TEAM = "team", "Team"
+        AI = "ai", "AI"
+        GITHUB = "github", "GitHub"
+
+    class Action(models.TextChoices):
+        PROJECT_CREATED = "project_created", "Project started"
+        RECORDING_TRANSCRIBED = "recording_transcribed", "Recording transcribed"
+        QUESTIONS_ASKED = "questions_asked", "Follow-up questions written"
+        QUESTION_ANSWERED = "question_answered", "Question answered"
+        STORIES_WRITTEN = "stories_written", "Stories written"
+        STORIES_REWRITTEN = "stories_rewritten", "Stories rewritten"
+        STORY_ADDED = "story_added", "Story added"
+        STORY_EDITED = "story_edited", "Story edited"
+        STORY_REMOVED = "story_removed", "Story removed"
+        DATA_MODEL_WRITTEN = "data_model_written", "Data summary written"
+        DATA_MODEL_REWRITTEN = "data_model_rewritten", "Data summary rewritten"
+        APPROVED = "approved", "Approved by the client"
+        TEAM_EDIT = "team_edit", "Story edited by the team"
+        TEAM_REJECT = "team_reject", "Story rejected by the team"
+        TEAM_MERGE = "team_merge", "Stories merged by the team"
+        TEAM_SPLIT = "team_split", "Story split by the team"
+        REPO_CONNECTED = "repo_connected", "Repository connected"
+        SENT_TO_GITHUB = "sent_to_github", "Sent to GitHub"
+        SEND_FAILED = "send_failed", "Sending to GitHub failed"
+        PROGRESS_UPDATED = "progress_updated", "Progress updated from GitHub"
+
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="audit_events")
+    actor = models.CharField(max_length=8, choices=Actor.choices)
+    # Who, when a person did it (the client or a team member).
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    action = models.CharField(max_length=24, choices=Action.choices)
+    detail = models.CharField(max_length=200, blank=True)
+    # Set by the app; not auto_now_add, so history can be backfilled with its real times.
+    created_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        indexes = [models.Index(fields=["project", "-created_at"])]
+
+    def __str__(self) -> str:
+        return f"{self.get_action_display()} ({self.project_id})"

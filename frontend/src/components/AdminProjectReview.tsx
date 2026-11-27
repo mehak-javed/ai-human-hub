@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { type FormEvent, useCallback, useState } from "react";
 
 import { DataModelView } from "@/components/DataModel";
@@ -97,6 +98,9 @@ export function AdminProjectReview({ id }: { id: string }) {
     <div className="flex flex-col gap-8">
       <header className="flex flex-col gap-1">
         <h1 className="text-3xl font-semibold">{project.name}</h1>
+        <Link href={`/admin/audit?project=${project.id}`} className="text-sm underline">
+          Audit log for this project
+        </Link>
         <p className="text-sm text-neutral-600 dark:text-neutral-300">
           {project.client.name}
           {project.client.email && project.client.email !== project.client.name && ` · ${project.client.email}`}

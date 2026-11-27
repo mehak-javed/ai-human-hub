@@ -16,6 +16,7 @@ from datetime import timedelta
 from django.db import transaction
 from django.utils import timezone
 
+from .audit import Action, Actor, record
 from .delivery import SOURCE_LABEL
 from .github import GitHub, GitHubError, make_http_client
 from .models import Project, UserStory
@@ -56,11 +57,16 @@ def apply_issue_event(payload: dict) -> int:
     if not repo or not number or "pull_request" in issue:
         return 0
     closed = issue.get("state") == "closed"
-    return UserStory.objects.filter(
+    changing = UserStory.objects.filter(
         project__github_repo__iexact=repo,
         project__status=Project.Status.SENT_TO_GITHUB,
         github_issue_number=number,
-    ).exclude(github_issue_closed=closed).update(github_issue_closed=closed)
+    ).exclude(github_issue_closed=closed)
+    project_ids = set(changing.values_list("project_id", flat=True))
+    updated = changing.update(github_issue_closed=closed)
+    for project_id in project_ids:
+        record(project_id, Action.PROGRESS_UPDATED, Actor.GITHUB, f"Issue #{number} {'closed' if closed else 'reopened'}")
+    return updated
 
 
 def refresh_if_stale(project: Project) -> None:
@@ -89,5 +95,16 @@ def refresh_if_stale(project: Project) -> None:
         return
     with transaction.atomic():
         stories = project.stories.exclude(github_issue_number=None)
-        stories.filter(github_issue_number__in=closed).update(github_issue_closed=True)
-        stories.exclude(github_issue_number__in=closed).update(github_issue_closed=False)
+        newly_closed = stories.filter(github_issue_number__in=closed, github_issue_closed=False).update(
+            github_issue_closed=True
+        )
+        reopened = stories.exclude(github_issue_number__in=closed).filter(github_issue_closed=True).update(
+            github_issue_closed=False
+        )
+    if newly_closed or reopened:
+        record(
+            project,
+            Action.PROGRESS_UPDATED,
+            Actor.GITHUB,
+            f"Checked with GitHub: {newly_closed} closed, {reopened} reopened",
+        )

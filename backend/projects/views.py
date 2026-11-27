@@ -13,6 +13,7 @@ from rest_framework.throttling import ScopedRateThrottle
 
 from .delivery import requirements_markdown
 from .masking import mask_personal_data
+from .audit import Action, Actor, plural, provider_name, record
 from .data_model import DataModelGenerationError, generate_data_model
 from .models import CONSENT_VERSION, DataModel, DeletionRecord, FollowUpQuestion, Project, UserStory
 from .progress import refresh_if_stale
@@ -189,11 +190,12 @@ class ProjectViewSet(
 
     def perform_create(self, serializer):
         # Owner and consent details come from the server, never the request.
-        serializer.save(
+        project = serializer.save(
             owner=self.request.user,
             consent_given_at=timezone.now(),
             consent_version=CONSENT_VERSION,
         )
+        record(project, Action.PROJECT_CREATED, Actor.CLIENT, f"Consent version {CONSENT_VERSION}", self.request.user)
 
     # --- Recordings (C4, AI1) ------------------------------------------------
 
@@ -226,6 +228,8 @@ class ProjectViewSet(
             provider=result.provider,
             duration_seconds=result.duration_seconds,
         )
+        seconds = round(result.duration_seconds or 0)
+        record(project, Action.RECORDING_TRANSCRIBED, Actor.AI, f"{provider_name(result.provider)}, {seconds} s of audio")
         return Response(TranscriptSerializer(transcript).data, status=status.HTTP_201_CREATED)
 
     # --- Follow-up questions (AI3, C5) ---------------------------------------
@@ -274,6 +278,12 @@ class ProjectViewSet(
             )
             for position, draft in enumerate(result.questions)
         )
+        record(
+            project,
+            Action.QUESTIONS_ASKED,
+            Actor.AI,
+            f"{provider_name(result.provider)} asked {plural(len(result.questions), 'question')}",
+        )
         return Response(
             FollowUpQuestionSerializer(project.questions.all(), many=True).data,
             status=status.HTTP_201_CREATED,
@@ -316,6 +326,8 @@ class ProjectViewSet(
         )
         question.answered_at = timezone.now()
         question.save()
+        how = "Not sure" if not_sure else ("by voice" if request.content_type.startswith("multipart/") else "in writing")
+        record(project, Action.QUESTION_ANSWERED, Actor.CLIENT, f"Question {question.position + 1} ({question.topic}): {how}", request.user)
         return Response(FollowUpQuestionSerializer(question).data)
 
     # --- User stories (AI4, C8, C9) -----------------------------------------
@@ -339,7 +351,7 @@ class ProjectViewSet(
         ]
         return masked_transcripts, answers
 
-    def replace_stories(self, project, result):
+    def replace_stories(self, project, result, rewritten=False):
         # In one transaction: the client sees either the old set or the new
         # one, never a mix or an empty list.
         with transaction.atomic():
@@ -355,6 +367,13 @@ class ProjectViewSet(
             )
             project.status = Project.Status.AWAITING_CLIENT
             project.save(update_fields=["status", "updated_at"])
+        record(
+            project,
+            Action.STORIES_REWRITTEN if rewritten else Action.STORIES_WRITTEN,
+            Actor.AI,
+            f"{provider_name(result.provider)} wrote {plural(len(result.stories), 'story')}"
+            + (", following the client's note" if rewritten else ""),
+        )
         return Response(
             UserStorySerializer(project.stories.all(), many=True).data,
             status=status.HTTP_201_CREATED,
@@ -396,7 +415,7 @@ class ProjectViewSet(
             )
         except StoryGenerationError:
             return Response({"detail": AI_BUSY}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
-        return self.replace_stories(project, result)
+        return self.replace_stories(project, result, rewritten=True)
 
     @action(detail=True, methods=["post"], url_path="stories/add")
     def add_story(self, request, pk=None):
@@ -413,6 +432,7 @@ class ProjectViewSet(
             position=last.position + 1 if last else 0,
             origin=UserStory.Origin.CLIENT,
         )
+        record(project, Action.STORY_ADDED, Actor.CLIENT, f"Story {story.pk}", request.user)
         return Response(UserStorySerializer(story).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["patch", "delete"], url_path=r"stories/(?P<story_id>\d+)")
@@ -426,6 +446,7 @@ class ProjectViewSet(
             return not_in_review()
 
         if request.method == "DELETE":
+            record(project, Action.STORY_REMOVED, Actor.CLIENT, f"Story {story.pk}", request.user)
             story.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -433,6 +454,7 @@ class ProjectViewSet(
         serializer.is_valid(raise_exception=True)
         # AI7: remember that the client changed what the AI wrote.
         story = serializer.save(client_edited=story.origin == UserStory.Origin.AI)
+        record(project, Action.STORY_EDITED, Actor.CLIENT, f"Story {story.pk}", request.user)
         return Response(UserStorySerializer(story).data)
 
     @action(detail=True, methods=["get", "post"], url_path="data-model")
@@ -472,6 +494,13 @@ class ProjectViewSet(
                 "confirmed_at": None,
             },
         )
+        record(
+            project,
+            Action.DATA_MODEL_REWRITTEN if note and current else Action.DATA_MODEL_WRITTEN,
+            Actor.AI,
+            f"{provider_name(result.provider)} listed {plural(len(data['entities']), 'entity').replace('entitys', 'entities')}"
+            + (", following the client's note" if note and current else ""),
+        )
         return Response({"data_model": DataModelSerializer(saved).data}, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["post"])
@@ -492,4 +521,5 @@ class ProjectViewSet(
             project.save(update_fields=["status", "approved_at", "updated_at"])
             # Approving also confirms the data summary, if there is one (C6).
             DataModel.objects.filter(project=project).update(confirmed_at=project.approved_at)
+            record(project, Action.APPROVED, Actor.CLIENT, f"{plural(project.stories.count(), 'story')}", request.user)
         return Response(ProjectSerializer(project).data)
