@@ -12,10 +12,11 @@ entities that exist; retries and the backup provider come from
 """
 
 import json
+import re
 from dataclasses import dataclass
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, StringConstraints, ValidationError, model_validator
+from pydantic import BaseModel, Field, StringConstraints, ValidationError, field_validator, model_validator
 
 from .llm import InvalidAnswer, LLMError, ask_for_json, load_json
 
@@ -43,6 +44,22 @@ RELATIONSHIP_KINDS = {
 }
 
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=60)]
+
+CAMEL_HUMP = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
+
+
+def as_words(name: str) -> str:
+    """'collection_time' -> 'collection time', 'MenuItem' -> 'Menu Item'.
+
+    Models often answer with code-style names; clients read plain words.
+    """
+    return " ".join(CAMEL_HUMP.sub(" ", name).replace("_", " ").replace("-", " ").split())
+
+
+def entity_name(name: str) -> str:
+    """'MenuItem' / 'menu_item' -> 'Menu item' (first letter capital, as the prompt asks)."""
+    words = as_words(name)
+    return words[:1].upper() + words[1:].lower() if words else words
 Note = Annotated[str, StringConstraints(strip_whitespace=True, max_length=200)]
 
 
@@ -52,11 +69,21 @@ class FieldDraft(BaseModel):
     required: bool
     note: Note = ""
 
+    @field_validator("name")
+    @classmethod
+    def plain_words(cls, name: str) -> str:
+        return as_words(name).lower() or name
+
 
 class EntityDraft(BaseModel):
     name: Name
     description: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300)]
     fields: list[FieldDraft] = Field(min_length=1, max_length=25)
+
+    @field_validator("name")
+    @classmethod
+    def plain_name(cls, name: str) -> str:
+        return entity_name(name) or name
 
     @model_validator(mode="after")
     def field_names_are_unique(self):
@@ -72,6 +99,12 @@ class RelationshipDraft(BaseModel):
     kind: Literal["one_to_one", "one_to_many", "many_to_many"]
     description: Note = ""
 
+    @field_validator("from_entity", "to_entity")
+    @classmethod
+    def plain_name(cls, name: str) -> str:
+        # Tidied exactly like entity names, so the two still match.
+        return entity_name(name) or name
+
 
 class DataModelDraft(BaseModel):
     entities: list[EntityDraft] = Field(min_length=1, max_length=15)
@@ -86,6 +119,15 @@ class DataModelDraft(BaseModel):
             for end in (rel.from_entity, rel.to_entity):
                 if end.lower() not in names:
                     raise ValueError(f"relationship mentions unknown entity {end!r}")
+        # A field that only points at another entity repeats a relationship
+        # ("menu item" on Order): drop it, unless it's the entity's only field.
+        for entity in self.entities:
+            kept = [
+                f for f in entity.fields
+                if not (f.type == "link" and f.name.lower() in names and f.name.lower() != entity.name.lower())
+            ]
+            if kept:
+                entity.fields = kept
         return self
 
 
@@ -147,11 +189,15 @@ noun in Title Case, e.g. "Order", "Customer", "Menu item".
 - Give each entity a one-sentence description and its fields. A field name is \
 short and lowercase, e.g. "delivery date".
 - Field types: {", ".join(FIELD_TYPES)}. Use "money" for prices, "choice" for \
-a value from a fixed list (put the options in the note), "file" for images.
+a value from a fixed list (put the options in the note), "file" for images, \
+"link" only for web addresses.
+- Write names as plain words with spaces, never code: "Menu item", \
+"collection time", not "MenuItem" or "collection_time".
 - "required" is true only if the record makes no sense without it.
 - Use "note" for anything useful the client said about a field, or "".
 - Relationships: "one_to_many" from Customer to Order means one customer has \
-many orders. Only connect entities you listed.
+many orders. Only connect entities you listed. Never add a field that points \
+to another entity (such as "customer" on Order): the relationship says it.
 - Include only what the client said or what their stories clearly need. Do \
 not add sign-in accounts, IDs or timestamps unless the client mentioned them.
 - Where an answer is "Not sure", leave that detail out.
